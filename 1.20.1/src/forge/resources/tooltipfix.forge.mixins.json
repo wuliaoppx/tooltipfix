@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "meow.tooltipfix.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "TooltipRenderUtilColorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,29 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "tooltipfix"
+version = "1.0.6"
+displayName = "TooltipFix"
+logoFile = "icon.png"
+authors = "wuliaoppx"
+description = '''Backports the 1.21.2 "resource packs can restyle the GUI" features to 1.21.1 NeoForge.
+Registers the minecraft:tooltip/background and minecraft:tooltip/frame GUI sprites, restores the nine_slice "stretch_inner" option, and lets packs replace the slot hover highlight with minecraft:container/slot_highlight_back / _front, so packs authored for 1.21.2+ render correctly.'''
+
+[[mixins]]
+config = "tooltipfix.mixins.json"
+
+[[dependencies."tooltipfix"]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies."tooltipfix"]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "CLIENT"

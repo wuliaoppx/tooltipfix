@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "tooltipfix",
+  "version": "1.0.28",
+  "name": "TooltipFix",
+  "description": "把 1.21.2 起的「材质包可自定义 GUI」移植到 1.20.1：物品悬浮框（tooltip/background + frame，含 1.21.2 新增的 stretch_inner）、格子悬浮高亮框（container/slot_highlight_back + _front）、物品栏与经验栏、按钮。直接读材质包里的 assets/minecraft/textures/gui/sprites/… PNG 及其 .mcmeta 九宫格描述。",
+  "authors": ["wuliaoppx"],
+  "license": "MIT",
+  "icon": "assets/tooltipfix/icon.png",
+  "environment": "client",
+  "mixins": [
+    "tooltipfix.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "minecraft": "1.20.1"
+  }
+}

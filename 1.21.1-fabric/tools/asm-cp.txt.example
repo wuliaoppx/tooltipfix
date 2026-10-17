@@ -1,0 +1,7 @@
+# One jar path per line, used to compile tools/Remap.java (ASM 9.7).
+# These jars are not redistributed here; point at your own copies, e.g.
+#
+#   C:\Users\<you>\.gradle\caches\modules-2\files-2.1\org.ow2.asm\asm\9.7\...\asm-9.7.jar
+#   C:\Users\<you>\.gradle\caches\modules-2\files-2.1\org.ow2.asm\asm-commons\9.7\...\asm-commons-9.7.jar
+#   C:\Users\<you>\.gradle\caches\modules-2\files-2.1\org.ow2.asm\asm-tree\9.7\...\asm-tree-9.7.jar
+#   C:\Users\<you>\.gradle\caches\modules-2\files-2.1\org.ow2.asm\asm-util\9.7\...\asm-util-9.7.jar

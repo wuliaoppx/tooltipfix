@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "tooltipfix",
+  "version": "1.0.4",
+  "icon": "assets/tooltipfix/icon.png",
+  "name": "TooltipFix",
+  "description": "把 1.21.2 的「材质包可自定义 GUI」移植到 1.21.1 Fabric：物品悬浮框的 GUI sprite 九宫格 + 1.21.2 新增的 stretch_inner，以及格子悬浮高亮框（container/slot_highlight_back / _front）。贴图由材质包提供，未提供时回落到原版绘制。",
+  "authors": ["wuliaoppx"],
+  "license": "MIT",
+  "environment": "client",
+  "mixins": [
+    "tooltipfix.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21"
+  }
+}
