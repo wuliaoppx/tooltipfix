@@ -44,10 +44,11 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 
 ### 效果
 
-| 悬浮框 + 格子高亮（材质包 A） | 悬浮框 + 格子高亮（材质包 B） |
-| --- | --- |
-| ![user1](docs/screenshots/user1-gui.png) | ![user2](docs/screenshots/user2-gui.png) |
-| ![user1-corner](docs/screenshots/user1-corner.png) | ![user2-corner](docs/screenshots/user2-corner.png) |
+| 容器底板 / 格子 / 按钮 | 物品提示框 | 生命·饥饿·经验条·快捷栏 | 药水效果（HUD + 物品栏列表） |
+| --- | --- | --- | --- |
+| ![容器](docs/screenshots/user3-inventory.png) | ![提示框](docs/screenshots/user3-tooltip.png) | ![HUD](docs/screenshots/user3-hud.png) | ![药水效果](docs/screenshots/user3-effect.png) |
+
+全部为实测截图（1.20.1 + 面向 1.21.2 的材质包）。
 
 1.20.1 那条线是工作量的大头：它**根本没有 GUI sprite 管线**，所以
 [`GuiSprite.java`](1.20.1/src/common/java/meow/tooltipfix/client/GuiSprite.java) 自己读材质包里的
