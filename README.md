@@ -34,13 +34,15 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 
 | 能力 | 1.20.1 | 1.21.1 Fabric | 1.21.1 NeoForge |
 | --- | :-: | :-: | :-: |
-| 物品悬浮框 sprite（`tooltip/background` + `frame`） | ✅ | ✅ | ✅ |
-| `nine_slice` 的 `stretch_inner` | ✅ | ✅ | ✅ |
-| 格子悬浮高亮框（`container/slot_highlight_back` / `_front`） | ✅ | ✅ | ✅ |
-| HUD（快捷栏 / 选中框 / 副手 / 经验条 / 跳跃条 / 攻击指示器） | ✅ | — | — |
-| 按钮底板（`widget/button*`） | ✅ | — | — |
-| 药水效果背景 | ✅ | — | — |
-| 动画 sprite（`.mcmeta` 的 `animation.frames` / `frametime`） | ✅ | 原版管线 | 原版管线 |
+| 物品悬浮框 sprite（`tooltip/background` + `frame`） | ✅ 模组 | ✅ 模组 | ✅ 模组 |
+| `nine_slice` 的 `stretch_inner` | ✅ 模组 | ✅ 模组 | ✅ 模组 |
+| 格子悬浮高亮框（`container/slot_highlight_back` / `_front`） | ✅ 模组 | ✅ 模组 | ✅ 模组 |
+| HUD（快捷栏 / 选中框 / 副手 / 经验条 / 跳跃条 / 攻击指示器） | ✅ 模组 | ✅ 原版 | ✅ 原版 |
+| 按钮底板（`widget/button*`、滑条、输入框、复选框、标签页） | ✅ 模组 | ✅ 原版 | ✅ 原版 |
+| 药水效果背景（`hud/effect_background(_ambient)`、`container/inventory/effect_background_large/_small`） | ✅ 模组 | ✅ 原版 | ✅ 原版 |
+| 动画 sprite（`.mcmeta` 的 `animation.frames` / `frametime`） | ✅ 模组 | 原版管线 | 原版管线 |
+
+1.21.1 原版本体就已经把这些控件改成 GUI sprite 绘制（`Gui` 里的 `hud/*`、`AbstractButton` 里的 `widget/button*`、`EffectRenderingInventoryScreen` / `Gui` 里的 `effect_background*`），所以**材质包在 1.21.1 上是开箱即用的，模组只补 tooltip、格子高亮、`stretch_inner` 这三块**；1.20.1 完全没有 GUI sprite 管线，才需要模组把上面每一行都补出来。药水效果背景在 1.20.1 上于 1.0.17 完成（HUD 24×24 与物品栏效果列表 120×32 / 32×32 两处）。
 
 ### 效果
 
