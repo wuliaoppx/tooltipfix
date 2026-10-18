@@ -1,4 +1,4 @@
-# tooltipfix — 1.12.2 分支
+# tooltipfix — 1.12.2
 
 把 **1.21.2 时代材质包**（主要验证对象：[CozyUI](https://modrinth.com/resourcepack/cozyui) v1.10）里
 的 GUI / HUD / 字体资源，正确映射到 **Minecraft 1.12.2 Forge** 的渲染管线上。
@@ -28,7 +28,7 @@
 
 ## 为什么必须是 coremod
 
-1.12.2 没有 Mixin，也没有 1.13+ 的 sprite 管线（`textures/gui/sprites/**`）。所以本分支用
+1.12.2 没有 Mixin，也没有 1.13+ 的 sprite 管线（`textures/gui/sprites/**`）。所以本变体用
 FML 的 coremod（`TooltipFixCore` + `IClassTransformer`）在类加载期改写原版方法，按注入点分五类：
 
 | Transformer | 目标 | 手法 |
@@ -120,7 +120,7 @@ Debug → passthrough → WidgetSprites → HudSprites → CreativeTabSprites
 否则往下传。整条链包在 `try/catch(report)/finally(GuiRender.rebind(previousTexture))` 里：
 出错只记一次日志、绘制结果退化成原版，绝不让 GUI 直接崩掉。
 
-### 2. 反色混合律（本分支最重要的技术结论）
+### 2. 反色混合律（本变体最重要的技术结论）
 
 1.12.2 的 `GuiIngame.func_175180_a` 是在
 `GlStateManager.func_187428_a(ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR, ONE, ZERO)`
