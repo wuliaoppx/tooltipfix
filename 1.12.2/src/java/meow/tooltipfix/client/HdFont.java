@@ -5,6 +5,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -43,6 +46,15 @@ public final class HdFont {
 
     private static final Glyph[] GLYPHS = new Glyph[65536];
 
+    /** 懒 provider 试过但字体里没有这个字形（避免每次都重新栅格化一次）。 */
+    private static final boolean[] MISSING = new boolean[65536];
+
+    /**
+     * 懒 provider：{@code "type":"ttf"} 只声明字体文件与字号，没有任何字符表，
+     * 所以字形必须在第一次用到时现栅格化（见 {@link Ttf}）。
+     */
+    private static Ttf TTF;
+
     /** 原版 ascii 字形图；材质包/字体包把它覆盖成 2x、4x 时由 {@link #legacyAscii} 接管。 */
     private static final ResourceLocation LEGACY_ASCII =
             new ResourceLocation("minecraft", "textures/font/ascii.png");
@@ -68,6 +80,55 @@ public final class HdFont {
     /** 极热路径（每个字形一次），只读一个静态布尔。 */
     public static boolean available() {
         return available;
+    }
+
+    /**
+     * 这个字符有没有 HD 字形可画。
+     *
+     * <p>transformer 用它决定「走 HD 引擎还是走原版方法」：没有字形的字符（比如只装了
+     * {@code ascii.png} 的字体包、字符串里的中文）必须交回原版管线，否则会整片消失。</p>
+     */
+    public static boolean has(char c) {
+        if (c == ' ') {
+            return true;
+        }
+        if (GLYPHS[c] != null) {
+            return true;
+        }
+        return lazy(c) != null;
+    }
+
+    /** 整串都能用 HD 字形画吗？{@code stringWidth} 用它决定要不要整串退回原版（保证宽度一致）。 */
+    public static boolean covers(String s) {
+        if (s == null) {
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\u00a7') {
+                i++; // 颜色码后面的字符不参与绘制
+                continue;
+            }
+            if (!has(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 懒 provider 取字形（会栅格化并缓存）；没有则 null。 */
+    private static Glyph lazy(char c) {
+        Ttf t = TTF;
+        if (t == null || MISSING[c]) {
+            return null;
+        }
+        Glyph g = t.glyph(c);
+        if (g == null) {
+            MISSING[c] = true;
+            return null;
+        }
+        GLYPHS[c] = g;
+        return g;
     }
 
     /**
@@ -117,6 +178,9 @@ public final class HdFont {
             return SPACE_ADVANCE;
         }
         Glyph g = GLYPHS[c];
+        if (g == null) {
+            g = lazy(c);
+        }
         if (g == null) {
             return 0;
         }
@@ -178,6 +242,9 @@ public final class HdFont {
         }
         Glyph g = GLYPHS[c];
         if (g == null) {
+            g = lazy(c);
+        }
+        if (g == null) {
             return 0.0F;
         }
         ensureProvider(g.provider);
@@ -221,6 +288,11 @@ public final class HdFont {
             p.failed = false;
         }
         java.util.Arrays.fill(GLYPHS, null);
+        java.util.Arrays.fill(MISSING, false);
+        if (TTF != null) {
+            TTF.release();
+            TTF = null;
+        }
         providers = new Provider[0];
         glyphCount = 0;
         available = false;
@@ -309,26 +381,27 @@ public final class HdFont {
             }
             ResourceLocation json = new ResourceLocation("minecraft", "font/default.json");
             IResource res = topResource(mc, json);
-            if (res == null) {
-                // 只有字体包的 ascii.png、没有 default.json 时不敢接管：HD 引擎只认识 provider 里
-                // 声明过的字形，一旦接管而缺 CJK 的 provider，中文会整片消失。宁可退回原版管线
-                // （拉丁字形仍是被裁的，这是 1.12.2 原版自己的局限，不是我们引入的）。
-                Debug.info("hdfont: no font/default.json in resource stack, keeping vanilla 8px font"
-                        + (legacy != null ? " (pack ascii.png needs default.json for CJK fallback)" : ""));
-                return;
-            }
-            String text;
-            try (InputStream in = res.func_110527_b()) {
-                text = new String(ByteStreams.toByteArray(in), "UTF-8");
-            }
-            text = stripComments(text);
-            JsonObject root = new JsonParser().parse(text).getAsJsonObject();
-            JsonArray arr = root.getAsJsonArray("providers");
-            for (JsonElement el : arr) {
-                Provider p = parseProvider(mc, el.getAsJsonObject());
-                if (p != null) {
-                    list.add(p);
+            if (res != null) {
+                String text;
+                try (InputStream in = res.func_110527_b()) {
+                    text = new String(ByteStreams.toByteArray(in), "UTF-8");
                 }
+                text = stripComments(text);
+                JsonObject root = new JsonParser().parse(text).getAsJsonObject();
+                JsonArray arr = root.getAsJsonArray("providers");
+                for (JsonElement el : arr) {
+                    Provider p = parseProvider(mc, el.getAsJsonObject());
+                    if (p != null) {
+                        list.add(p);
+                    }
+                }
+            } else if (legacy == null && TTF == null) {
+                Debug.info("hdfont: no font/default.json and no pack ascii.png, keeping vanilla 8px font");
+                return;
+            } else {
+                // 只有字体包自己的 ascii.png（或 ttf）时照样接管：没字形的字符由 transformer
+                // 交回原版方法画（见 HdFont.has），所以中文不会因为缺 provider 而消失。
+                Debug.info("hdfont: no font/default.json, using the pack's own font resource only");
             }
             providers = list.toArray(new Provider[list.size()]);
             int count = 0;
@@ -346,7 +419,7 @@ public final class HdFont {
                 }
             }
             glyphCount = count;
-            available = count > 0;
+            available = count > 0 || TTF != null;
             int maxH = 0;
             for (Provider p : providers) {
                 if (p.drawH > maxH) {
@@ -366,6 +439,9 @@ public final class HdFont {
     private static Provider parseProvider(Minecraft mc, JsonObject o) {
         try {
             String type = o.has("type") ? o.get("type").getAsString() : "bitmap";
+            if ("ttf".equals(type)) {
+                return parseTtf(mc, o);
+            }
             if (!"bitmap".equals(type)) {
                 Debug.info("hdfont: skip provider type=" + type);
                 return null;
@@ -437,8 +513,73 @@ public final class HdFont {
         }
     }
 
+    /**
+     * {@code "type":"ttf"} provider：1.13+ 的矢量字体，1.12.2 完全没有对应实现。
+     *
+     * <p>这里用 AWT 把它栅格化：{@code size} 是逻辑字号（GUI px 的 em 高度），
+     * {@code oversample} 是栅格化倍率（现代版本用来抗锯齿）。字形按需生成、拼进一张图集，
+     * 见 {@link Ttf}。</p>
+     */
+    private static Provider parseTtf(Minecraft mc, JsonObject o) {
+        try {
+            if (TTF != null) {
+                Debug.info("hdfont: extra ttf provider ignored (only one lazy provider is supported)");
+                return null;
+            }
+            String file = o.get("file").getAsString();
+            float size = o.has("size") ? o.get("size").getAsFloat() : 11.0F;
+            int oversample = o.has("oversample") ? o.get("oversample").getAsInt() : 2;
+            float shiftX = 0.0F;
+            float shiftY = 0.0F;
+            if (o.has("shift") && o.get("shift").isJsonArray()) {
+                JsonArray sh = o.getAsJsonArray("shift");
+                if (sh.size() >= 1) {
+                    shiftX = sh.get(0).getAsFloat();
+                }
+                if (sh.size() >= 2) {
+                    shiftY = sh.get(1).getAsFloat();
+                }
+            }
+            ResourceLocation rl = new ResourceLocation(file);
+            // 1.13+ 的 file 是相对 assets/<ns>/font/ 的（"minecraft:xxx.ttf" → font/xxx.ttf）
+            ResourceLocation font = new ResourceLocation(rl.func_110624_b(), "font/" + rl.func_110623_a());
+            IResource res = topResource(mc, font);
+            if (res == null) {
+                Debug.info("hdfont: ttf not in resource stack " + font);
+                return null;
+            }
+            java.awt.Font awt;
+            try (InputStream in = res.func_110527_b()) {
+                awt = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, in);
+            }
+            awt = awt.deriveFont(size * Math.max(1, oversample));
+            java.awt.font.FontRenderContext frc =
+                    new java.awt.font.FontRenderContext(null, true, false);
+            java.awt.font.LineMetrics lm = awt.getLineMetrics("Ag\u591c", frc);
+            float asc = lm.getAscent() / Math.max(1, oversample);
+            float desc = lm.getDescent() / Math.max(1, oversample);
+            Provider p = new Provider();
+            p.file = file;
+            p.location = rl;
+            p.lazy = true;
+            p.drawH = Math.max(1, Math.round(asc + desc));
+            p.height = p.drawH;
+            p.ascent = Math.round(asc);
+            p.drawW = 0;
+            p.codepoints = new int[0];
+            TTF = new Ttf(p, awt, Math.max(1, oversample), shiftX, shiftY);
+            Debug.info("hdfont: ttf provider '" + file + "' pack='" + res.func_177240_d()
+                    + "' size=" + size + " oversample=" + oversample
+                    + " ascent=" + p.ascent + " height=" + p.drawH);
+            return p;
+        } catch (Throwable t) {
+            Debug.info("hdfont: ttf provider failed " + t);
+            return null;
+        }
+    }
+
     private static void ensureProvider(Provider p) {
-        if (p.loaded || p.failed) {
+        if (p.lazy || p.loaded || p.failed) {
             return;
         }
         p.failed = true; // 先置位，避免重入
@@ -719,10 +860,170 @@ public final class HdFont {
 
     // ---------------------------------------------------------------- 数据
 
+    /**
+     * ttf 字形的按需栅格化 + 图集。
+     *
+     * <p>1.13+ 的 ttf provider 不声明字符表，任何字符都可能出现，所以不能像 bitmap provider
+     * 那样在装载时一次性建表。这里用 AWT 现画现拼：第一次用到某字符时栅格化成位图，
+     * 用货架算法塞进一张 2048² 的图集（每次只上传那一小块），之后就是一个普通 Glyph。</p>
+     */
+    private static final class Ttf {
+
+        private static final int ATLAS = 2048;
+
+        private final Provider provider;
+        private final java.awt.Font font;
+        private final int oversample;
+        private final float shiftX;
+        private final float shiftY;
+
+        private final java.awt.font.FontRenderContext frc =
+                new java.awt.font.FontRenderContext(null, true, false);
+
+        private int texture;
+        private int[] pixels;
+        private int penX;
+        private int penY;
+        private int shelfH;
+        private int slotX;
+        private int slotY;
+        private int count;
+
+        Ttf(Provider provider, java.awt.Font font, int oversample, float shiftX, float shiftY) {
+            this.provider = provider;
+            this.font = font;
+            this.oversample = oversample;
+            this.shiftX = shiftX;
+            this.shiftY = shiftY;
+        }
+
+        void release() {
+            if (texture > 0) {
+                PENDING_DELETE.add(texture);
+                texture = 0;
+            }
+            pixels = null;
+        }
+
+        private boolean init() {
+            pixels = new int[ATLAS * ATLAS];
+            texture = upload(pixels, ATLAS, ATLAS);
+            provider.texture = texture;
+            provider.loaded = true;
+            Debug.info("hdfont: ttf atlas " + ATLAS + "x" + ATLAS + " gl=" + texture);
+            return texture > 0;
+        }
+
+        /** 取一个字符的字形；字体里没有这个字形时返回 null。 */
+        Glyph glyph(int cp) {
+            if (!font.canDisplay(cp)) {
+                // 字体里没有这个字形：不画 .notdef 方框，交给原版管线（中文仍能正常显示）
+                return null;
+            }
+            if (texture <= 0 && !init()) {
+                return null;
+            }
+            String s = new String(Character.toChars(cp));
+            java.awt.font.GlyphVector gv = font.createGlyphVector(frc, s);
+            if (gv.getNumGlyphs() < 1) {
+                return null;
+            }
+            float advance = gv.getGlyphMetrics(0).getAdvance() / (float) oversample;
+            java.awt.Rectangle pb = gv.getGlyphPixelBounds(0, frc, 0.0F, 0.0F);
+            if (pb.width <= 0 || pb.height <= 0) {
+                // 空格/组合符：只有前进宽度，没有墨迹
+                Glyph blank = new Glyph(provider, 0);
+                blank.width = 0.0F;
+                blank.height = 0.0F;
+                blank.ascent = 0.0F;
+                blank.advance = Math.max(1, Math.round(advance));
+                return blank;
+            }
+            if (pb.width > ATLAS || pb.height > ATLAS || !place(pb.width, pb.height)) {
+                Debug.info("hdfont: ttf atlas full at " + count + " glyphs, '" + (char) cp + "' dropped");
+                provider.failed = true;
+                return null;
+            }
+            BufferedImage img = new BufferedImage(pb.width, pb.height,
+                    BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g.setColor(Color.WHITE);
+            g.setFont(font);
+            g.drawString(s, -pb.x, -pb.y);
+            g.dispose();
+            for (int y = 0; y < pb.height; y++) {
+                img.getRGB(0, y, pb.width, 1, pixels, (slotY + y) * ATLAS + slotX, pb.width);
+            }
+            uploadRegion(slotX, slotY, pb.width, pb.height);
+
+            Glyph glyph = new Glyph(provider, 0);
+            glyph.width = pb.width / (float) oversample;
+            glyph.height = pb.height / (float) oversample;
+            // pb.y 是墨迹顶相对基线的偏移（往上为负），换成本引擎的「基线到墨迹顶」距离
+            glyph.ascent = shiftY - pb.y / (float) oversample;
+            glyph.xOff = shiftX;
+            glyph.advance = Math.max(1, Math.round(advance));
+            glyph.u0 = slotX / (float) ATLAS;
+            glyph.v0 = slotY / (float) ATLAS;
+            glyph.u1 = (slotX + pb.width) / (float) ATLAS;
+            glyph.v1 = (slotY + pb.height) / (float) ATLAS;
+            count++;
+            if (count <= 3 || count % 512 == 0) {
+                Debug.info("hdfont: ttf glyph '" + (char) cp + "' " + pb.width + "x" + pb.height
+                        + " adv=" + glyph.advance + " n=" + count);
+            }
+            return glyph;
+        }
+
+        /** 货架算法：一行一行往右排，排满换行；返回 false = 图集满。 */
+        private boolean place(int w, int h) {
+            if (w + 2 > ATLAS) {
+                return false;
+            }
+            if (penX + w + 1 > ATLAS) {
+                penX = 0;
+                penY += shelfH + 1;
+                shelfH = 0;
+            }
+            if (penY + h + 1 > ATLAS) {
+                return false;
+            }
+            slotX = penX;
+            slotY = penY;
+            penX += w + 1;
+            if (h > shelfH) {
+                shelfH = h;
+            }
+            return true;
+        }
+
+        private void uploadRegion(int x, int y, int w, int h) {
+            ByteBuffer buf = BufferUtils.createByteBuffer(w * h * 4);
+            for (int yy = 0; yy < h; yy++) {
+                int row = (y + yy) * ATLAS + x;
+                for (int xx = 0; xx < w; xx++) {
+                    int p = pixels[row + xx];
+                    buf.put((byte) (p >> 16));
+                    buf.put((byte) (p >> 8));
+                    buf.put((byte) p);
+                    buf.put((byte) (p >>> 24));
+                }
+            }
+            buf.flip();
+            GlStateManager.func_179144_i(texture);
+            GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, x, y, w, h,
+                    GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        }
+    }
+
     private static final class Glyph {
         final Provider provider;
-        final float height;
-        final float ascent;
+        float height;
+        float ascent;
         /** 水平和垂直 UV 都在装载贴图时才回填：只覆盖墨迹那一块，宽度不超过 advance-1。 */
         float u0;
         float u1;
@@ -755,5 +1056,7 @@ public final class HdFont {
         int texture;
         boolean loaded;
         boolean failed;
+        /** ttf provider：字形按需栅格化，{@link #codepoints} 为空。 */
+        boolean lazy;
     }
 }

@@ -204,7 +204,8 @@ public final class FontRendererTransformer implements IClassTransformer {
             if (hasDraw) {
                 MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "a", DRAW_DESC, null, null);
                 mv.visitCode();
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "available", "()Z", false);
+                mv.visitVarInsn(Opcodes.ILOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "has", "(C)Z", false);
                 Label vanilla = new Label();
                 mv.visitJumpInsn(Opcodes.IFEQ, vanilla);
                 mv.visitVarInsn(Opcodes.ALOAD, 0);
@@ -229,7 +230,8 @@ public final class FontRendererTransformer implements IClassTransformer {
             if (hasWidth) {
                 MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "a", WIDTH_DESC, null, null);
                 mv.visitCode();
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "available", "()Z", false);
+                mv.visitVarInsn(Opcodes.ILOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "has", "(C)Z", false);
                 Label vanilla = new Label();
                 mv.visitJumpInsn(Opcodes.IFEQ, vanilla);
                 mv.visitVarInsn(Opcodes.ILOAD, 1);
@@ -250,6 +252,10 @@ public final class FontRendererTransformer implements IClassTransformer {
                 mv.visitCode();
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "available", "()Z", false);
                 Label vanilla = new Label();
+                mv.visitJumpInsn(Opcodes.IFEQ, vanilla);
+                // 整串都有 HD 字形才用 HD 宽度：混着原版字形时退回原版测量，保证两边一致
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "covers", "(Ljava/lang/String;)Z", false);
                 mv.visitJumpInsn(Opcodes.IFEQ, vanilla);
                 mv.visitVarInsn(Opcodes.ALOAD, 1);
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC, HD, "stringWidth", STRING_DESC, false);

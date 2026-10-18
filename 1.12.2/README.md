@@ -121,6 +121,17 @@ out = src + dst - 2 * src * dst
 `DENSITY`（`-Dtooltipfix.hdfont.density`，默认 4）控制重采样倍率：默认取材质包原分辨率
 （guiScale 4 时 1:1），不额外降采样。
 
+**ttf provider 也支持**：现代字体包（如 `cym_Cosmos_Glyphs字体包`）只给一行
+`{"type":"ttf","file":"…ttf","size":5.5,"oversample":8}`，1.12.2 完全没有这套东西。
+`HdFont.parseTtf()` 用 `java.awt.Font.createFont()` 把 ttf 载进来，按 `size × oversample`
+设 em、用 `GlyphVector` 取每字形的墨迹矩形与 advance，`oversample` 倍超采样后 1:1 拷进
+一张 2048² 货架式图集（`glTexSubImage2D` 增量上传），度量再除以 `oversample` 还原成逻辑像素。
+注意 `file` 是相对 `assets/<ns>/` 的路径，**要补 `font/` 前缀**才是资源位置。
+
+**逐字形回退**：`HdFont.has(char)` / `covers(String)` 在字形缺失（`GLYPHS` 没命中、且 ttf 的
+`canDisplay` 为 false）时返回 false，transformer 生成的包装器随即改调 `meow$drawVanilla`，
+于是「字体包没有的字」（例如纯拉丁装饰字体里的中文）自动交回原版 unicode 页，不会出现豆腐块。
+
 ### 4. 第三方 legacy 字体包也能覆盖
 
 只认 `default.json` 会让「后加载的字体包」失效——例如
@@ -135,8 +146,9 @@ out = src + dst - 2 * src * dst
 * CJK / emoji → 继续由 CozyUI 的 `default.json` 兜底（`AsciiLayout.GRID` 提供原版 256 格
   「网格序号 → 字符」映射，从原版 jar 的常量池里机械导出）。
 
-没有 `default.json` 又没被覆盖时，`HdFont` 直接 `return` 保持原版管线——否则缺 CJK provider
-会让整片中文消失。
+只有 `ascii.png`、没有 `default.json` 时（单独加载一个老式字体包），`HdFont` 照样接管，
+只是 provider 列表里只有这一项：拉丁走字体包，CJK 逐字形回退原版。只有「既没有
+`default.json`、`ascii.png` 也没被覆盖、也没有 ttf」时才 `return` 保持原版管线。
 
 ### 5. 隐藏容器标题 `TitleFilter`
 
@@ -186,3 +198,7 @@ java -Dtooltipfix.selftest=true -Dtooltipfix.debug=true ...
 * **主菜单标题 logo**：CozyUI 没有 `title/minecraft.png`，所以仍用原版 logo（用户决定不动）。
 * **老式整图图集**（1024×1024 的 4× HD `textures/gui/*.png`）靠 `LegacySheets` 重算 UV，
   只对「按原版 UV 画」的图元有效；材质包若把整张图重排过版式，仍需要单独适配。
+* **ttf 字形缺失**：字体包只含拉丁/希腊字母时（例如 `cym_Cosmos_Glyphs`，CJK 0/20902 字形），
+  中文按 `canDisplay` 逐字回退原版 unicode 页，不会出现豆腐块，但也不会变成该字体的风格。
+* **ttf 格式**：走 AWT 的 `Font.createFont`，TrueType 稳定；CFF/OTF 依赖 JRE（游戏用
+  jre-legacy = Java 8）是否支持，失败时打 `hdfont: ttf load failed` 并退回原版。
