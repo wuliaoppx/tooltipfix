@@ -1,0 +1,188 @@
+# tooltipfix — 1.12.2 分支
+
+把 **1.21.2 时代材质包**（主要验证对象：[CozyUI](https://modrinth.com/resourcepack/cozyui) v1.10）里
+的 GUI / HUD / 字体资源，正确映射到 **Minecraft 1.12.2 Forge** 的渲染管线上。
+
+> 一句话定位：这是**材质包兼容层**，不是「把 CozyUI 的观感移植进 1.12.2」。
+> 模组自己不带任何美术资源，画什么完全取决于当前材质包提供了什么。
+
+## 两条硬红线
+
+1. **不把观感强加给原版 / 其它材质包。** 每一处替换的前提都是「材质包确实提供了这个资源」
+   （去资源栈顶取，包名是 `Default` 就说明没人覆盖），没有就原样回落 1.12.2 的行为。
+2. **全局性改动默认 opt-in 或默认等价。** 会改变原版表现的开关（例如字体平滑）默认关闭；
+   隐藏容器标题这类「对齐 1.21.2」的改动也只在材质包覆盖了该容器底图时生效。
+
+## 为什么必须是 coremod
+
+1.12.2 没有 Mixin，也没有 1.13+ 的 sprite 管线（`textures/gui/sprites/**`）。所以本分支用
+FML 的 coremod（`TooltipFixCore` + `IClassTransformer`）在类加载期改写原版方法，按注入点分四类：
+
+| Transformer | 目标 | 手法 |
+| --- | --- | --- |
+| `GuiTransformer` | `Gui.func_73729_b/73733_a/73734_a`（GUI 三个基础图元） | 整方法体替换 |
+| `GuiScreenTransformer` | `GuiScreen.func_146279_a`(3 参) / `func_146285_a`(4 参 tooltip) | 整方法体替换 |
+| `PanoramaTransformer` | `GuiMainMenu` 里画全景图的私有 `(IIF)V` | 整方法体替换 |
+| `FontRendererTransformer` | `FontRenderer.a(CZ)F` / `a(C)I` / `a(String)I` / `a(String;III)I` | 改名 + 生成 wrapper |
+
+注意：transformer 跑在 `FMLDeobfuscatingRemapper` **之前**，看到的是混淆名（`bip`、`a`、`func_73729_b` 的
+srg 名），所以四个 transformer 全部靠**结构匹配**（方法描述符 + 方法体里的特征常量）定位，不能硬编码类名。
+
+## 目录结构
+
+```
+1.12.2/
+├── build.ps1                       # 编译 + 打包（不依赖 ForgeGradle / 联网）
+└── src/
+    ├── resources/mcmod.info
+    └── java/meow/tooltipfix/
+        ├── TooltipFixMod.java      # @Mod 入口：注册资源重载监听、tick 钩子
+        ├── core/                   # 4 个 transformer + TooltipFixCore
+        └── client/
+            ├── Hooks.java          # 贴图分派链入口（被 transformer 调用）
+            ├── GuiSprite.java      # 材质包 sprite 的加载/缓存/九宫格/动画帧
+            ├── GuiRender.java      # 底层 quad 绘制 + GL 状态快照/还原
+            ├── HudSprites.java     # HUD：快捷栏、血量/饥饿、准星、攻击指示器
+            ├── WidgetSprites.java  # 按钮/输入框/滚动条
+            ├── CreativeTabSprites  # 创造物品栏标签页
+            ├── EffectSprites.java  # 药水效果图标与背景
+            ├── TooltipSprites.java # tooltip 背景/边框（九宫格）
+            ├── SlotSprites.java    # 物品格
+            ├── LegacySheets.java   # 老式整图图集（4x HD）的 UV 重映射
+            ├── Panorama.java       # 主菜单全景图
+            ├── HdFont.java         # HD 字体引擎（bitmap provider）
+            ├── AsciiLayout.java    # 原版 ascii.png 的 16x16 网格 → 字符表
+            ├── FontSmoothing.java  # 字体线性过滤（opt-in）
+            ├── TitleFilter.java    # 隐藏容器 GUI 标题
+            └── SelfTest.java       # 自测：自动截图流水线
+```
+
+## 构建
+
+1.12.2 的 srg 命名 MC jar 不能随仓库分发，需要本地生成一份
+（`net.minecraft:client:1.12.2:srg` + Forge 的 `forge-1.12.2-14.23.5.2864-srg` 合并成
+`client-1.12.2-srg.jar`），然后：
+
+```powershell
+# 只编译打包 → build/libs/tooltipfix-1.0.0.jar
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
+
+# 顺便部署进本地 1.12.2 实例的 mods/
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Deploy
+```
+
+依赖清单直接从启动器的 profile json（`versions\1.12.2-Forge_14.23.5.2864\*.json`）读，
+保证和运行期是同一批 jar（1.12.2 是 LWJGL **2**，手写清单最容易在这里翻车）。
+编译固定 `--release 8`：1.12.2 跑在 Java 8，class 版本必须 ≤ 52。
+
+## 核心机制
+
+### 1. 贴图分派链
+
+原版所有 GUI 绘制最终都落到 `Gui.drawTexturedModalRect` / `drawModalRectWithCustomSizedTexture`
+/ `drawRect`。transformer 把方法体换成 `Hooks.blit(...)`，由它按顺序问：
+
+```
+Debug → passthrough → WidgetSprites → HudSprites → CreativeTabSprites
+      → EffectSprites → LegacySheets → GuiRender.rawBlit（原版行为）
+```
+
+每一层靠 **(u, v, w, h) + 当前绑定贴图** 认出「这是哪块 GUI」，命中就画材质包对应的 sprite，
+否则往下传。整条链包在 `try/catch(report)/finally(GuiRender.rebind(previousTexture))` 里：
+出错只记一次日志、绘制结果退化成原版，绝不让 GUI 直接崩掉。
+
+### 2. 反色混合律（本分支最重要的技术结论）
+
+1.12.2 的 `GuiIngame.func_175180_a` 是在
+`GlStateManager.func_187428_a(ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR, ONE, ZERO)`
+状态下画准星和准星侧攻击指示器的：
+
+```
+out = src + dst - 2 * src * dst
+```
+
+即 **纯黑是 no-op（= 透明），纯白会把背景反色**。CozyUI 的
+`crosshair.png` / `crosshair_attack_indicator_{background,progress,full}.png` 是
+**IHDR colortype 2（RGB，没有 alpha 通道）**、黑底白图，正是按这个公式设计的。
+所以这几张图必须走 `GuiSprite.drawKeepBlend`（→ `GuiRender.spriteKeepBlend`）：
+**只换贴图、不碰 blend 函数**。一旦改成普通 alpha 混合，黑底会变成黑方块。
+同理，`spriteKeepBlend` 里要显式 `enableBlend()`——原版那行 `func_179141_d()` 是
+`enableAlpha`（不是 `enableBlend`），混合开关全靠前面 HUD 留下的状态。
+
+### 3. HD 字体引擎 `HdFont`
+
+1.12.2 的 `FontRenderer` 只认 128×128 的 `textures/font/ascii.png`：
+`func_78266_a(int, boolean)` 的 UV 写死 `/128.0f`、格子写死 8px。所以材质包给的
+1.13+ 风格字体（`font/default.json` + 一张张 `mcsans_*.png`）在 1.12.2 上根本画不出来。
+
+`HdFont` 直接解析 `assets/minecraft/font/default.json` 的 bitmap provider（`file` / `height` /
+`ascent` / `chars`），自己建图集、算墨迹宽度、按 `cellW/cellH → drawW/drawH` 缩放，
+最后由 `FontRendererTransformer` 把 `draw` / `advance` / `stringWidth` 三个方法换掉。
+`DENSITY`（`-Dtooltipfix.hdfont.density`，默认 4）控制重采样倍率：默认取材质包原分辨率
+（guiScale 4 时 1:1），不额外降采样。
+
+### 4. 第三方 legacy 字体包也能覆盖
+
+只认 `default.json` 会让「后加载的字体包」失效——例如
+`Slightly-Improved-Font-1.1.5.zip` 只提供 `textures/font/ascii.png`（256×256，2×），
+没有 `default.json`，而原版管线又只认 128×128，于是它永远画不出来。
+
+`HdFont.legacyAscii()` 会去资源栈顶取 `textures/font/ascii.png`：只要不是 `Default`
+（= 真的被某个材质包覆盖了），就把它当成一个 16×16 网格的 bitmap provider，
+**插到 provider 列表的第一位**。`HdFont` 的 glyph 表是「先到先得」，于是：
+
+* 拉丁字符 → 走字体包的 `ascii.png`（用户想看到的效果）；
+* CJK / emoji → 继续由 CozyUI 的 `default.json` 兜底（`AsciiLayout.GRID` 提供原版 256 格
+  「网格序号 → 字符」映射，从原版 jar 的常量池里机械导出）。
+
+没有 `default.json` 又没被覆盖时，`HdFont` 直接 `return` 保持原版管线——否则缺 CJK provider
+会让整片中文消失。
+
+### 5. 隐藏容器标题 `TitleFilter`
+
+1.12.2 的容器界面会在底图上用深灰 `4210752` 画两行字：顶部容器名（合成 / 熔炉 / 箱子…）
+和底部「物品栏」。1.13+ 已经不画了，材质包也就按「没有这两行」设计底图；于是 CozyUI 那种
+浅灰浮起面板上，这两行深灰小字几乎看不清，还压住面板圆角。
+
+判据是「**覆盖**」而不是「类名」：`LegacySheets.blit` 画到 `textures/gui/container/*.png`
+且栈顶不是 `Default` 时，把当前 `GuiScreen` 记进 `COVERED`；`TitleFilter.hidden()` 只对这张
+屏幕生效，并且只吞 `y <= 8`（所有容器标题都在这条带里）和 `y == ySize - 94`（底部物品栏标签）。
+创造物品栏在 `(8, 6)` 画的是**标签页名字**，1.21.2 也照画，所以单独放行。
+
+### 6. 主菜单全景图
+
+1.12.2 只认 `textures/gui/title/background/panorama_*.png`；`PanoramaTransformer` 换掉
+`GuiMainMenu` 里那段画全景图的私有方法，让 6 张图按现代方式铺满并正确旋转。
+
+## 自测
+
+```powershell
+# 自动跑一整轮：进测试世界 → 逐屏截图 → 退出
+java -Dtooltipfix.selftest=true -Dtooltipfix.debug=true ...
+```
+
+截图落在 `screenshots\selftest-*.png`（`00-mainmenu` / `01-hud` / `02-inventory-*` /
+`03-creative-*` / `04-tooltip-*` / `05-world` / `06-itemtooltip-*` / `07-cooldown` /
+`08-attack-indicator`），每个界面都成对截「装了模组」和 `-Dtooltipfix.passthrough=true`
+（纯原版行为）两张，方便直接 A/B。日志里 grep `[tooltipfix]` 就能看到每个 sprite 来自哪个包。
+
+## 开关一览
+
+| 系统属性 | 默认 | 作用 |
+| --- | --- | --- |
+| `-Dtooltipfix.debug` | 关 | 打开 `[tooltipfix]` 详细日志 |
+| `-Dtooltipfix.passthrough` | 关 | 全部 sprite 直通原版（最快 A/B：判断「这块是不是我们画的」） |
+| `-Dtooltipfix.hdfont=false` | 开 | 关掉 HD 字体引擎 |
+| `-Dtooltipfix.hdfont.density=N` | 4 | 字体重采样倍率（4 = 材质包原分辨率） |
+| `-Dtooltipfix.fontsmooth` | 关 | 老式 128×128 字体走线性过滤（默认最近邻，更锐利） |
+| `-Dtooltipfix.hidetitles=false` | 开 | 不隐藏容器标题 |
+| `-Dtooltipfix.selftest` | 关 | 自动截图流水线 |
+| `-Dtooltipfix.selftest.world=名字` | `tooltipfix-test` | 自测用世界名 |
+
+## 已知限制
+
+* **emoji**：CozyUI 的 `emoji_05_*.png` 依赖 `font/default.json` 里的 emoji provider；
+  少数 codepoint 在 1.12.2 的 unicode 页面里缺页（`unicode_page_0xE5` 一带），显示为缺字方块。
+* **主菜单标题 logo**：CozyUI 没有 `title/minecraft.png`，所以仍用原版 logo（用户决定不动）。
+* **老式整图图集**（1024×1024 的 4× HD `textures/gui/*.png`）靠 `LegacySheets` 重算 UV，
+  只对「按原版 UV 画」的图元有效；材质包若把整张图重排过版式，仍需要单独适配。

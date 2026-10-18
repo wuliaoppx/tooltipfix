@@ -1,0 +1,12 @@
+[
+  {
+    "modid": "tooltipfix",
+    "name": "TooltipFix",
+    "description": "CozyUI style nine-slice sprites for the 1.12.2 GUI (tooltips, buttons, slots, HUD, effects).",
+    "version": "1.0.0",
+    "mcversion": "1.12.2",
+    "authorList": ["meow"],
+    "clientSideOnly": true,
+    "requiredMods": []
+  }
+]
