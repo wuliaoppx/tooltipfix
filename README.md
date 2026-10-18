@@ -45,17 +45,36 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 
 1.21.1 原版本体就已经把这些控件改成 GUI sprite 绘制（`Gui` 里的 `hud/*`、`AbstractButton` 里的 `widget/button*`、`EffectRenderingInventoryScreen` / `Gui` 里的 `effect_background*`），所以**材质包在 1.21.1 上是开箱即用的，模组只补 tooltip、格子高亮、`stretch_inner` 这三块**；1.20.1 完全没有 GUI sprite 管线，才需要模组把上面每一行都补出来。药水效果背景在 1.20.1 上于 1.0.17 完成（HUD 24×24 与物品栏效果列表 120×32 / 32×32 两处）。
 
-### 1.12.2 分支
+上表**不含 1.12.2**：那个版本连 `textures/gui/sprites/` 这套资源位置都不存在，能力边界没法用同一张表表达，
+见下一节。
 
-1.12.2 比 1.20.1 还早：**连 `textures/gui/sprites/` 这套资源位置都不存在**，也没有 Mixin。
-所以那条线是完全不同的实现——FML coremod 在类加载期改写 `Gui` / `GuiScreen` / `FontRenderer` /
-`GuiMainMenu` 的方法体，把 1.21.2 材质包提供的 sprite 映射到 1.12.2 的绘制调用上，
-并把 1.13+ 的字体（`font/default.json` 的 bitmap / ttf provider、以及第三方只给
-`textures/font/ascii.png` 的老式字体包）一并接管。
+### 1.12.2 分支：实现方式和上面三条线**完全不同**
+
+> **点名**：`1.12.2/` 不是其它变体的降级版，代码一行都不共用。上面三条线都建立在
+> 「1.13+ 已经存在 GUI sprite 资源位置 + 已经存在 Mixin / Fabric 事件」这个前提上，
+> 而 1.12.2 这两样**都没有**。所以这个变体是 **FML coremod**：注册 `IClassTransformer`，
+> 在类加载期用 ASM 直接改写原版 `Gui` / `GuiScreen` / `GuiMainMenu` / `FontRenderer` 的**方法体**。
+> 别的变体补的是「资源从哪读」，1.12.2 补的是「这个方法怎么写」——一个在数据层，一个在字节码层。
+
+具体来说，1.12.2 比 1.20.1 还早：**连 `textures/gui/sprites/` 这套资源位置都不存在**，也没有 Mixin，
+更没有 1.13+ 的字体提供器系统（`font/default.json` 里的 bitmap / ttf / unihex）。coremod 因此做两件事：
+
+1. 把 1.21.2 材质包提供的 sprite 映射回 1.12.2 那些**硬编码**的绘制调用（`Gui.drawTexturedModalRect`
+   等三个基础图元），靠 `(u, v, w, h) + 当前绑定贴图` 认出「这是哪块 GUI」；
+2. 自己实现一套 HD 字体引擎，接管 1.13+ 字体包（bitmap provider、ttf provider，以及只给
+   `textures/font/ascii.png` 的老式字体包），字体缺某个字形时**逐字符**落回原版 unicode 页。
 
 它**不是**「把 CozyUI 的观感搬进 1.12.2」：模组自己不带美术资源，每一处替换的前提都是
-「当前材质包确实提供了这个资源」，没有就原样回落原版行为。细节、开关与已知限制见
-[`1.12.2/README.md`](1.12.2/README.md)。
+「当前材质包确实提供了这个资源」，没有就原样回落原版行为。五个 transformer、反色混合律、
+字体引擎、游戏内设置界面与全部开关见 [`1.12.2/README.md`](1.12.2/README.md)。
+
+| 资源包界面的设置入口（左下角） | 游戏内设置界面（引擎 / 标题 / 预设 / 字号 / 偏移 / 间距） |
+| --- | --- |
+| ![1.12.2 资源包界面](docs/screenshots/1.12.2-resourcepacks.png) | ![1.12.2 设置界面](docs/screenshots/1.12.2-settings.png) |
+
+1.12.2 实测截图，演示材质包 **CozyUI+ v1.10** + **cym_Cosmos_Glyphs 字体包 v1.5.4**。
+右图那套细体拉丁字母与数字来自字体包里的**矢量字体（ttf）**，中文仍由原版 unicode 页渲染——
+两种字形能并排显示，就是字体引擎逐字符回落的结果。
 
 ### 效果
 

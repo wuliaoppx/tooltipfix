@@ -6,6 +6,19 @@
 > 一句话定位：这是**材质包兼容层**，不是「把 CozyUI 的观感移植进 1.12.2」。
 > 模组自己不带任何美术资源，画什么完全取决于当前材质包提供了什么。
 
+> **和 1.20.1 / 1.21.1 变体的区别**：那三条线的前提是「1.13+ 已经有 GUI sprite 资源位置、已经有
+> Mixin 或加载器事件」，模组补的是资源读取通路；1.12.2 两样都没有，只能做 **FML coremod**，
+> 在类加载期用 ASM 改写原版方法体。两边**没有共用代码**，不要拿别的变体的行为来对照。
+
+## 实机截图
+
+| 资源包界面（左下角是设置入口） | 设置界面 |
+| --- | --- |
+| ![资源包界面](../docs/screenshots/1.12.2-resourcepacks.png) | ![设置界面](../docs/screenshots/1.12.2-settings.png) |
+
+1.12.2 Forge 14.23.5.2864，演示材质包 **CozyUI+ v1.10** + **cym_Cosmos_Glyphs 字体包 v1.5.4**。
+右图的拉丁字母/数字由字体包里的 ttf 渲染，中文仍走原版 unicode 页（逐字符回落）。
+
 ## 两条硬红线
 
 1. **不把观感强加给原版 / 其它材质包。** 每一处替换的前提都是「材质包确实提供了这个资源」
@@ -16,7 +29,7 @@
 ## 为什么必须是 coremod
 
 1.12.2 没有 Mixin，也没有 1.13+ 的 sprite 管线（`textures/gui/sprites/**`）。所以本分支用
-FML 的 coremod（`TooltipFixCore` + `IClassTransformer`）在类加载期改写原版方法，按注入点分四类：
+FML 的 coremod（`TooltipFixCore` + `IClassTransformer`）在类加载期改写原版方法，按注入点分五类：
 
 | Transformer | 目标 | 手法 |
 | --- | --- | --- |
