@@ -15,9 +15,17 @@ import org.lwjgl.input.Mouse;
  * 而 drawScreen 末尾本来就有一个注入点（{@link meow.tooltipfix.core.ResourcePackUiTransformer}），
  * 自己画 + 自己读鼠标最省事。</p>
  *
+ * <p>这里的滑块不带数字输入框：这个界面收不到我们转发的按键（没有注入 {@code keyTyped}），
+ * 想要精确输入就点左下角进设置界面。</p>
+ *
  * <p>设置按钮**不**随字体引擎开关消失：引擎关掉之后还得靠它再打开。</p>
  */
 public final class TooltipFixOverlay {
+
+    private static final int SLIDER_X = 4;
+    private static final int SLIDER_Y = 5;
+    private static final int SLIDER_W = 140;
+    private static final int SLIDER_H = 20;
 
     private static final int BTN_W = 110;
     private static final int BTN_H = 16;
@@ -28,8 +36,30 @@ public final class TooltipFixOverlay {
     private static final int COLOR_FILL_HOVER = 0xC0343A44;
     private static final int COLOR_TEXT = 0xFFF0F0F0;
 
+    /** 界面上的字号滑块（与设置界面里那个共用 {@link TfSettings} 的存储）。 */
+    private static final NumberSlider SCALE = new NumberSlider("字号", "%", 50, 200,
+            new NumberSlider.Sink() {
+                @Override
+                public int get() {
+                    return Math.round(TfSettings.scale() * 100.0F);
+                }
+
+                @Override
+                public void set(int value) {
+                    HdFont.setUserScale(value / 100.0F);
+                }
+            }, new Runnable() {
+                @Override
+                public void run() {
+                    HdFont.saveUserScale();
+                }
+            }, false);
+
     /** 上一帧鼠标左键是否按着（用来抓「按下」这一瞬间，避免按住期间反复打开界面）。 */
     private static boolean pressed;
+
+    /** 见过一次鼠标松开没有：挡住「换屏那一下还按着鼠标」被滑块/按钮当成新点击。 */
+    private static boolean released;
 
     private TooltipFixOverlay() {
     }
@@ -42,16 +72,26 @@ public final class TooltipFixOverlay {
         if (mc == null) {
             return;
         }
+        boolean held = Mouse.isButtonDown(0);
+        if (!held) {
+            released = true;
+            pressed = false;
+        }
+
         // 滑块自己会判断「当前材质包有没有矢量字体」，没有就整块不画
-        FontScaleSlider.draw(screen, mouseX, mouseY);
+        if (HdFont.hasTtf()) {
+            SCALE.layout(SLIDER_X, SLIDER_Y, SLIDER_W, SLIDER_H);
+            SCALE.draw(mouseX, mouseY, released);
+        } else {
+            SCALE.blur();
+        }
 
         ScaledResolution scaled = new ScaledResolution(mc);
         int x = BTN_MARGIN;
         int y = scaled.func_78328_b() - BTN_H - BTN_MARGIN;
         boolean hover = mouseX >= x && mouseX < x + BTN_W && mouseY >= y && mouseY < y + BTN_H;
 
-        boolean held = Mouse.isButtonDown(0);
-        if (held && !pressed) {
+        if (released && held && !pressed) {
             pressed = true;
             if (hover) {
                 // 直接换屏：本方法已经是 drawScreen 的最后一步（注入点在 RETURN 前），
@@ -59,8 +99,6 @@ public final class TooltipFixOverlay {
                 mc.func_147108_a(new GuiTooltipFixSettings(screen));
                 return;
             }
-        } else if (!held) {
-            pressed = false;
         }
 
         Gui.func_73734_a(x, y, x + BTN_W, y + BTN_H, hover ? COLOR_FILL_HOVER : COLOR_FILL);

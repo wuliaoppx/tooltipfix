@@ -2,10 +2,11 @@ package meow.tooltipfix.client;
 
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
+import org.lwjgl.input.Mouse;
 
 /**
- * TooltipFix 的设置界面：字体兼容引擎开关、隐藏容器标题开关、CozyUI 预设开关、字号滑块、
- * 字形 X/Y 偏移。
+ * TooltipFix 的设置界面：字体兼容引擎开关、隐藏容器标题开关、CozyUI 预设开关，
+ * 以及字号 / 字形 X 偏移 / 字形 Y 偏移 / 字间距四行「滑块 + 数字输入框」。
  *
  * <p>入口在资源包（材质包）界面左下角的小按钮上——那里本来就是「管资源包」的地方，
  * 而本 mod 的开关都跟材质包内容有关。屏幕本身是普通 {@link GuiScreen}，
@@ -24,27 +25,91 @@ public final class GuiTooltipFixSettings extends GuiScreen {
     private static final int ID_FONT = 1;
     private static final int ID_TITLES = 2;
     private static final int ID_PRESET = 3;
-    private static final int ID_OFFX_DEC = 4;
-    private static final int ID_OFFX_INC = 5;
-    private static final int ID_OFFY_DEC = 6;
-    private static final int ID_OFFY_INC = 7;
-    private static final int ID_OFF_RESET = 8;
-    private static final int ID_SP_DEC = 9;
-    private static final int ID_SP_INC = 10;
+    private static final int ID_RESET = 8;
 
     private static final int BUTTON_W = 200;
     private static final int BUTTON_H = 20;
     private static final int GAP = 2;
-    private static final int SLIDER_W = 200;
-    private static final int SLIDER_H = 22;
-    private static final int STEP_W = 20;
+    private static final int ROW_H = 20;
+    private static final int ROW_STEP = 22;
     private static final int STEP_H = 18;
 
     private static final int COLOR_TITLE = 0xFFFFFF;
     private static final int COLOR_HINT = 0xA0A0A0;
     private static final int COLOR_WARN = 0xE0B040;
 
+    /** 偏移 / 间距改完就落盘：这两项不重载字体，写盘代价可忽略。 */
+    private static final Runnable SAVE = new Runnable() {
+        @Override
+        public void run() {
+            TfSettings.save();
+        }
+    };
+
     private final GuiScreen parent;
+
+    /** 字号：界面上按百分比显示，实际存的是 0.5~2.0 的倍率（见 {@link TfSettings#setScale(float)}）。 */
+    private final NumberSlider scaleRow = new NumberSlider("字号 %", "%", 50, 200,
+            new NumberSlider.Sink() {
+                @Override
+                public int get() {
+                    return Math.round(TfSettings.scale() * 100.0F);
+                }
+
+                @Override
+                public void set(int value) {
+                    HdFont.setUserScale(value / 100.0F);
+                }
+            }, new Runnable() {
+                @Override
+                public void run() {
+                    HdFont.saveUserScale();
+                }
+            }, true);
+
+    private final NumberSlider offXRow = new NumberSlider("X 偏移", "",
+            TfSettings.MIN_OFFSET, TfSettings.MAX_OFFSET,
+            new NumberSlider.Sink() {
+                @Override
+                public int get() {
+                    return TfSettings.offsetX();
+                }
+
+                @Override
+                public void set(int value) {
+                    TfSettings.setOffset(value, TfSettings.offsetY());
+                }
+            }, SAVE, true);
+
+    private final NumberSlider offYRow = new NumberSlider("Y 偏移", "",
+            TfSettings.MIN_OFFSET, TfSettings.MAX_OFFSET,
+            new NumberSlider.Sink() {
+                @Override
+                public int get() {
+                    return TfSettings.offsetY();
+                }
+
+                @Override
+                public void set(int value) {
+                    TfSettings.setOffset(TfSettings.offsetX(), value);
+                }
+            }, SAVE, true);
+
+    private final NumberSlider spacingRow = new NumberSlider("字间距", "",
+            TfSettings.MIN_SPACING, TfSettings.MAX_SPACING,
+            new NumberSlider.Sink() {
+                @Override
+                public int get() {
+                    return TfSettings.spacing();
+                }
+
+                @Override
+                public void set(int value) {
+                    TfSettings.setSpacing(value);
+                }
+            }, SAVE, true);
+
+    private final NumberSlider[] rows = {scaleRow, offXRow, offYRow, spacingRow};
 
     /**
      * 本界面被打开的时刻。
@@ -55,16 +120,14 @@ public final class GuiTooltipFixSettings extends GuiScreen {
      */
     private final long openedAt = System.currentTimeMillis();
 
+    /** 见过一次「鼠标没按」之后才接受输入：滑块是轮询的，光看 openedAt 挡不住按着的鼠标。 */
+    private boolean armed;
+
     private GuiButton fontButton;
     private GuiButton titlesButton;
     private GuiButton presetButton;
-    private GuiButton offsetResetButton;
+    private GuiButton resetButton;
 
-    private int sliderX;
-    private int sliderY;
-    private int offXRowY;
-    private int offYRowY;
-    private int spacingRowY;
     private int offResetY;
     private int hintY;
 
@@ -88,25 +151,17 @@ public final class GuiTooltipFixSettings extends GuiScreen {
         this.field_146292_n.add(titlesButton);
         this.field_146292_n.add(presetButton);
 
-        sliderX = cx - SLIDER_W / 2;
-        sliderY = top + (BUTTON_H + GAP) * 3 + 4;
+        int rowsTop = top + (BUTTON_H + GAP) * 3 + 2;
+        for (int i = 0; i < rows.length; i++) {
+            rows[i].layout(x, rowsTop + i * ROW_STEP, BUTTON_W, ROW_H);
+            rows[i].refresh();
+        }
 
-        int rowStep = STEP_H + GAP;
-        offXRowY = sliderY + SLIDER_H + 4;
-        offYRowY = offXRowY + rowStep;
-        spacingRowY = offYRowY + rowStep;
-        offResetY = spacingRowY + rowStep + 2;
+        offResetY = rowsTop + ROW_STEP * rows.length + 2;
+        resetButton = new GuiButton(ID_RESET, x, offResetY, BUTTON_W, STEP_H, "全部恢复默认");
+        this.field_146292_n.add(resetButton);
 
-        this.field_146292_n.add(new GuiButton(ID_OFFX_DEC, x, offXRowY, STEP_W, STEP_H, "-"));
-        this.field_146292_n.add(new GuiButton(ID_OFFX_INC, x + BUTTON_W - STEP_W, offXRowY, STEP_W, STEP_H, "+"));
-        this.field_146292_n.add(new GuiButton(ID_OFFY_DEC, x, offYRowY, STEP_W, STEP_H, "-"));
-        this.field_146292_n.add(new GuiButton(ID_OFFY_INC, x + BUTTON_W - STEP_W, offYRowY, STEP_W, STEP_H, "+"));
-        this.field_146292_n.add(new GuiButton(ID_SP_DEC, x, spacingRowY, STEP_W, STEP_H, "-"));
-        this.field_146292_n.add(new GuiButton(ID_SP_INC, x + BUTTON_W - STEP_W, spacingRowY, STEP_W, STEP_H, "+"));
-        offsetResetButton = new GuiButton(ID_OFF_RESET, x, offResetY, BUTTON_W, STEP_H, "偏移 / 间距归零");
-        this.field_146292_n.add(offsetResetButton);
-
-        hintY = offResetY + STEP_H + 6;
+        hintY = offResetY + STEP_H + 3;
         this.field_146292_n.add(new GuiButton(ID_DONE, x, this.field_146295_m - 26, BUTTON_W, BUTTON_H, "完成"));
         refreshLabels();
     }
@@ -123,29 +178,8 @@ public final class GuiTooltipFixSettings extends GuiScreen {
             case ID_PRESET:
                 TfSettings.setPreset(!TfSettings.preset());
                 break;
-            case ID_OFFX_DEC:
-                shiftOffset(-1, 0);
-                break;
-            case ID_OFFX_INC:
-                shiftOffset(1, 0);
-                break;
-            case ID_OFFY_DEC:
-                shiftOffset(0, -1);
-                break;
-            case ID_OFFY_INC:
-                shiftOffset(0, 1);
-                break;
-            case ID_OFF_RESET:
-                shiftOffset(-TfSettings.offsetX(), -TfSettings.offsetY());
-                if (TfSettings.spacing() != 0) {
-                    shiftSpacing(-TfSettings.spacing());
-                }
-                break;
-            case ID_SP_DEC:
-                shiftSpacing(-1);
-                break;
-            case ID_SP_INC:
-                shiftSpacing(1);
+            case ID_RESET:
+                TfSettings.resetAll(); // 内部已经 apply + save
                 break;
             case ID_DONE:
                 TfSettings.save();
@@ -157,37 +191,27 @@ public final class GuiTooltipFixSettings extends GuiScreen {
         refreshLabels();
     }
 
-    /** 挪一格偏移：只改内存，同时落盘一次（这里点击频率低，不需要像滑块那样去抖）。 */
-    private void shiftOffset(int dx, int dy) {
-        TfSettings.setOffset(TfSettings.offsetX() + dx, TfSettings.offsetY() + dy);
-        TfSettings.save();
-    }
-
-    /** 挪一格字间距：同上，点一次存一次（前进宽度是现算的，不需要重载字体）。 */
-    private void shiftSpacing(int delta) {
-        TfSettings.setSpacing(TfSettings.spacing() + delta);
-        TfSettings.save();
-    }
-
     @Override
     public void func_73863_a(int mouseX, int mouseY, float partialTicks) {
+        if (!Mouse.isButtonDown(0) && System.currentTimeMillis() - openedAt >= 200L) {
+            armed = true;
+        }
         this.func_146276_q_();
         int cx = this.field_146294_l / 2;
         this.func_73732_a(this.field_146289_q, "TooltipFix 设置", cx, 8, COLOR_TITLE);
 
-        // 滑块自己读鼠标（见 FontScaleSlider），所以它先吃这次点击，剩下的才轮到按钮
-        FontScaleSlider.draw(this, sliderX, sliderY, SLIDER_W, SLIDER_H, mouseX, mouseY);
+        // 滑块自己读鼠标，画在按钮之前；没有矢量字体时字号那行整块不画（原版 8px 没得调）
+        for (NumberSlider row : rows) {
+            if (row == scaleRow && !HdFont.hasTtf()) {
+                row.blur();
+                continue;
+            }
+            row.draw(mouseX, mouseY, armed);
+        }
         super.func_73863_a(mouseX, mouseY, partialTicks);
 
-        this.func_73732_a(this.field_146289_q, "X 偏移：" + signed(TfSettings.offsetX()),
-                cx, offXRowY + 5, COLOR_TITLE);
-        this.func_73732_a(this.field_146289_q, "Y 偏移：" + signed(TfSettings.offsetY()),
-                cx, offYRowY + 5, COLOR_TITLE);
-        this.func_73732_a(this.field_146289_q, "字间距：" + signed(TfSettings.spacing()),
-                cx, spacingRowY + 5, COLOR_TITLE);
-
         if (HdFont.hasTtf()) {
-            this.func_73732_a(this.field_146289_q, "滑滑块调字号（松手保存）",
+            this.func_73732_a(this.field_146289_q, "拖滑块调字号（松手保存）",
                     cx, hintY, COLOR_HINT);
         } else if (!HdFont.enabled()) {
             this.func_73732_a(this.field_146289_q, "字体引擎已关闭：正在使用 1.12.2 原生 8px 字体",
@@ -196,17 +220,34 @@ public final class GuiTooltipFixSettings extends GuiScreen {
             this.func_73732_a(this.field_146289_q, "当前材质包没有矢量字体（ttf），字号不可调",
                     cx, hintY, COLOR_WARN);
         }
-        this.func_73732_a(this.field_146289_q, "X/Y 只挪字形，间距改字与字的距离；归零可一键还原",
+        this.func_73732_a(this.field_146289_q, "拖滑块调值，或点右边数字框输入后回车",
                 cx, hintY + 11, COLOR_HINT);
-        this.func_73732_a(this.field_146289_q, "CozyUI 预设 = 引擎开 + 字号 100% + 隐藏标题 + 全零",
+        this.func_73732_a(this.field_146289_q, "恢复默认 = 引擎开 + 隐藏标题 + 字号 100% + 全零",
                 cx, hintY + 22, COLOR_HINT);
-        this.func_73732_a(this.field_146289_q, "config/tooltipfix-hdfont.txt",
+        this.func_73732_a(this.field_146289_q, "配置文件：config/tooltipfix-hdfont.txt",
                 cx, hintY + 33, COLOR_HINT);
     }
 
     @Override
+    public void func_73876_c() {
+        super.func_73876_c();
+        for (NumberSlider row : rows) {
+            row.update();
+        }
+    }
+
+    @Override
     protected void func_73864_a(int mouseX, int mouseY, int mouseButton) {
-        if (System.currentTimeMillis() - openedAt < 200L) {
+        if (!armed) {
+            return;
+        }
+        boolean consumed = false;
+        for (NumberSlider row : rows) {
+            if (row.mouseClicked(mouseX, mouseY, mouseButton)) {
+                consumed = true;
+            }
+        }
+        if (consumed) {
             return;
         }
         super.func_73864_a(mouseX, mouseY, mouseButton);
@@ -214,16 +255,17 @@ public final class GuiTooltipFixSettings extends GuiScreen {
 
     @Override
     protected void func_73869_a(char typedChar, int keyCode) {
+        for (NumberSlider row : rows) {
+            if (row.keyTyped(typedChar, keyCode)) {
+                return;
+            }
+        }
         if (keyCode == 1) { // Esc：回原来的界面，别掉到主菜单
             TfSettings.save();
             this.field_146297_k.func_147108_a(this.parent);
             return;
         }
         super.func_73869_a(typedChar, keyCode);
-    }
-
-    private static String signed(int value) {
-        return value > 0 ? "+" + value : Integer.toString(value);
     }
 
     private void refreshLabels() {
@@ -236,10 +278,9 @@ public final class GuiTooltipFixSettings extends GuiScreen {
         if (presetButton != null) {
             presetButton.field_146126_j = "CozyUI 预设：" + (TfSettings.preset() ? "开" : "关");
         }
-        if (offsetResetButton != null) {
-            boolean zero = TfSettings.offsetX() == 0 && TfSettings.offsetY() == 0
-                    && TfSettings.spacing() == 0;
-            offsetResetButton.field_146125_m = !zero; // 已经是 0 就藏起来，少一个可点的东西
+        // 一键恢复默认，所以不需要置灰——灰着按一下也没坏处，但会让人以为坏了
+        for (NumberSlider row : rows) {
+            row.refresh();
         }
     }
 }

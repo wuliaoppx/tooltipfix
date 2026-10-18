@@ -34,7 +34,7 @@ public final class TfSettings {
     /** 旧版字号覆盖属性。 */
     private static final String SCALE_PROPERTY = "tooltipfix.hdfont.scale";
 
-    /** 字号倍率的默认值与可调范围（与 {@link FontScaleSlider} 的滑块两端一致）。 */
+    /** 字号倍率的默认值与可调范围（与 {@link NumberSlider} 里字号那行的两端一致）。 */
     static final float DEFAULT_SCALE = 1.0F;
     static final float MIN_SCALE = 0.5F;
     static final float MAX_SCALE = 2.0F;
@@ -262,6 +262,31 @@ public final class TfSettings {
             spacing = backupSpacing;
             preset = false;
         }
+        apply();
+        save();
+    }
+
+    /**
+     * 一键把**全部**配置恢复成默认：引擎开、隐藏标题开、字号 100%、偏移 (0,0)、字间距 0。
+     *
+     * <p>不走 {@link #setPreset(boolean)} 的还原路径——预设关掉是「回到开预设之前」，
+     * 而这里要的是「回到刚装模组时的样子」。</p>
+     */
+    public static void resetAll() {
+        load();
+        fontEngine = true;
+        hideTitles = true;
+        scale = DEFAULT_SCALE;
+        offsetX = 0;
+        offsetY = 0;
+        spacing = 0;
+        preset = false;
+        backupFont = true;
+        backupTitles = true;
+        backupScale = DEFAULT_SCALE;
+        backupOffsetX = 0;
+        backupOffsetY = 0;
+        backupSpacing = 0;
         apply();
         save();
     }
