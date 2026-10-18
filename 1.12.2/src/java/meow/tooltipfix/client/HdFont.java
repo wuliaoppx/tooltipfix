@@ -78,6 +78,15 @@ public final class HdFont {
 
     private static boolean dirty = true;
     private static boolean available;
+
+    /**
+     * 当前字形来自哪个材质包/字体包；null = 原版（没有包覆盖字体）。
+     *
+     * <p>设置界面按这个名字分桶存字形偏移：不同包的基线、side bearing 完全不同，
+     * 同一组偏移在 A 包对齐、换到 B 包就偏了。</p>
+     */
+    private static String fontPack;
+
     private static Provider[] providers = new Provider[0];
     private static int glyphCount;
 
@@ -97,6 +106,11 @@ public final class HdFont {
     /** 极热路径（每个字形一次），只读一个静态布尔。 */
     public static boolean available() {
         return available;
+    }
+
+    /** @return 当前字体来自哪个材质包（用于按包存字形偏移）；null = 原版字体 */
+    public static String fontPack() {
+        return fontPack;
     }
 
     /**
@@ -314,6 +328,8 @@ public final class HdFont {
         }
         clear();
         ensure();
+        // 解析完就知道字体来自哪个包了：让设置把字形偏移切到那个包自己那份
+        TfSettings.syncPack();
     }
 
     /** 引擎当前是否启用（设置界面据此画开关）。 */
@@ -404,6 +420,7 @@ public final class HdFont {
             Provider p = new Provider();
             p.file = "minecraft:textures/font/ascii.png";
             p.location = LEGACY_ASCII;
+            p.pack = pack;
             p.height = height;
             p.ascent = height - 1;
             p.cols = cols;
@@ -445,9 +462,11 @@ public final class HdFont {
             if (legacy != null) {
                 list.add(legacy);
             }
+            String packName = legacy == null ? null : legacy.pack;
             ResourceLocation json = new ResourceLocation("minecraft", "font/default.json");
             IResource res = topResource(mc, json);
             if (res != null) {
+                String jsonPack = res.func_177240_d();
                 String text;
                 try (InputStream in = res.func_110527_b()) {
                     text = new String(ByteStreams.toByteArray(in), "UTF-8");
@@ -461,6 +480,9 @@ public final class HdFont {
                         list.add(p);
                     }
                 }
+                if (packName == null) {
+                    packName = jsonPack;
+                }
             } else if (legacy == null && TTF == null) {
                 Debug.info("hdfont: no font/default.json and no pack ascii.png, keeping vanilla 8px font");
                 return;
@@ -470,6 +492,15 @@ public final class HdFont {
                 Debug.info("hdfont: no font/default.json, using the pack's own font resource only");
             }
             providers = list.toArray(new Provider[list.size()]);
+            // ttf 才是「字体本身」：同一个包同时给了 ascii.png 和 ttf 时按 ttf 记包名
+            for (Provider p : providers) {
+                if (p.lazy && p.pack != null) {
+                    packName = p.pack;
+                    break;
+                }
+            }
+            fontPack = (packName == null || packName.length() == 0 || "Default".equals(packName))
+                    ? null : packName;
             int count = 0;
             for (Provider p : providers) {
                 for (int i = 0; i < p.codepoints.length; i++) {
@@ -499,7 +530,7 @@ public final class HdFont {
                 return;
             }
             Debug.info("hdfont: providers=" + providers.length + " glyphs=" + glyphCount
-                    + " lineHeight=" + lineHeight
+                    + " lineHeight=" + lineHeight + " pack=" + fontPack
                     + " -> " + (available ? "HD font ON" : "HD font OFF"));
         } catch (Throwable t) {
             Debug.info("hdfont: parse failed " + t);
@@ -709,6 +740,7 @@ public final class HdFont {
             Provider p = new Provider();
             p.file = file;
             p.location = rl;
+            p.pack = res.func_177240_d();
             p.lazy = true;
             p.drawH = Math.max(1, Math.round(asc + desc));
             p.height = p.drawH;
@@ -1190,6 +1222,8 @@ public final class HdFont {
 
     private static final class Provider {
         String file;
+        /** 这张图/这个 ttf 是哪个材质包给的（= 资源栈里命中的包名）。 */
+        String pack;
         ResourceLocation location;
         int height;
         int ascent;

@@ -7,7 +7,9 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -81,6 +83,22 @@ public final class TfSettings {
     private static int backupOffsetY;
     private static int backupSpacing;
 
+    /**
+     * 按材质包分开存的字形微调：包名 → {@code {offsetX, offsetY, spacing}}。
+     *
+     * <p>为什么分开：偏移是为了「让某个字体包的字形跟原版中文对齐」，不同包的基线、
+     * side bearing 完全不同，同一组值在 A 包对得齐、换到 B 包就偏一半。所以每个包记自己那份，
+     * 换包等于换一组微调，用户不用每次重调。</p>
+     */
+    private static final Map<String, int[]> packs = new LinkedHashMap<String, int[]>();
+
+    /** 当前生效的桶名（{@code ""} = 原版字体）；由 {@link #syncPack()} 在资源重载后切换。 */
+    private static String packKey = "";
+
+    /** 老文件里的全局 {@code offset.x/offset.y/spacing} 是否已经迁进第一个识别出的包。 */
+    private static boolean migrated;
+
+
     private TfSettings() {
     }
 
@@ -107,6 +125,7 @@ public final class TfSettings {
             backupOffsetY = offsetY;
             backupSpacing = spacing;
             readFile();
+            migrated = !packs.isEmpty();
         } finally {
             loading = false;
         }
@@ -153,6 +172,73 @@ public final class TfSettings {
     public static int spacing() {
         load();
         return spacing;
+    }
+
+    /** 当前偏移属于哪个材质包（原始包名；{@code ""} = 原版字体）。 */
+    public static String packKey() {
+        load();
+        return packKey;
+    }
+
+    /** 给界面显示用的包名：去掉 {@code §} 颜色码，太长就截断（包名来自 zip 文件名，可能很长）。 */
+    public static String packLabel() {
+        String key = packKey();
+        if (key.length() == 0) {
+            return "原版字体";
+        }
+        StringBuilder sb = new StringBuilder(key.length());
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            if (c == '\u00a7') {
+                i++; // 跳过格式码，否则界面上的包名会变成彩色/乱码
+                continue;
+            }
+            sb.append(c);
+        }
+        String text = sb.toString().trim();
+        if (text.length() > 18) {
+            text = text.substring(0, 17) + "…";
+        }
+        return text;
+    }
+
+    /**
+     * 资源重载后调用：把当前微调存回旧桶，换上新包自己那份。
+     *
+     * <p>顺序很重要——必须先 {@link HdFont#reload()} 让它解析出新包名，再调这里。</p>
+     */
+    public static void syncPack() {
+        load();
+        String key = HdFont.fontPack();
+        if (key == null) {
+            key = "";
+        }
+        if (key.equals(packKey)) {
+            return;
+        }
+        String previous = packKey;
+        int[] current = new int[]{offsetX, offsetY, spacing};
+        // 首次从「老配置的全局值」切到具体包时不要把它记成原版字体那份，直接迁过去
+        if (!(previous.length() == 0 && !migrated)) {
+            packs.put(previous, current);
+        }
+        packKey = key;
+        int[] stored = packs.get(key);
+        if (stored == null && previous.length() == 0 && !migrated
+                && (current[0] != 0 || current[1] != 0 || current[2] != 0)) {
+            // 升级路径：老文件里的全局 offset/ spacing 当作「当前这个包」的，观感不变
+            stored = current.clone();
+            packs.put(key, stored);
+        }
+        migrated = true;
+        if (stored == null) {
+            stored = new int[]{0, 0, 0};
+        }
+        offsetX = stored[0];
+        offsetY = stored[1];
+        spacing = stored[2];
+        Debug.info("settings: pack='" + packKey + "' offset=" + offsetX + "," + offsetY
+                + " spacing=" + spacing + " (known packs=" + packs.size() + ")");
     }
 
     // ------------------------------------------------------------------ 修改
@@ -211,6 +297,7 @@ public final class TfSettings {
         }
         offsetX = nx;
         offsetY = ny;
+        storeCurrent();
         if (nx != 0 || ny != 0) {
             preset = false;
         }
@@ -224,6 +311,7 @@ public final class TfSettings {
             return;
         }
         spacing = next;
+        storeCurrent();
         if (next != 0) {
             preset = false;
         }
@@ -262,6 +350,7 @@ public final class TfSettings {
             spacing = backupSpacing;
             preset = false;
         }
+        storeCurrent();
         apply();
         save();
     }
@@ -287,6 +376,7 @@ public final class TfSettings {
         backupOffsetX = 0;
         backupOffsetY = 0;
         backupSpacing = 0;
+        packs.clear(); // 「全部」恢复默认：所有包各自的微调一起清掉
         apply();
         save();
     }
@@ -311,13 +401,11 @@ public final class TfSettings {
             writer.write("# titles = 隐藏容器标题：仅当材质包覆盖了该容器底图时才生效\n");
             writer.write("# offset = 字形偏移（逻辑像素，整数，-8 ~ 8）：材质包 ttf 与中文混排对不齐时用\n");
             writer.write("# spacing= 字间距（逻辑像素，整数，-4 ~ 8）：加在每个字的前进宽度上\n");
+            writer.write("# 上面两项按材质包分开存，见文件末尾的 pack.<包名>.offset.x / .offset.y / .spacing\n");
             writer.write("# preset = CozyUI 预设：开 = font 开 + scale 1.00 + titles 开 + offset 0 + spacing 0\n");
             writer.write("font=" + onOff(fontEngine) + "\n");
             writer.write("scale=" + String.format(Locale.US, "%.2f", scale) + "\n");
             writer.write("titles=" + onOff(hideTitles) + "\n");
-            writer.write("offset.x=" + offsetX + "\n");
-            writer.write("offset.y=" + offsetY + "\n");
-            writer.write("spacing=" + spacing + "\n");
             writer.write("preset=" + onOff(preset) + "\n");
             // 预设的原值也存下来：下次开游戏时把预设关掉仍然能还原
             writer.write("preset.font=" + onOff(backupFont) + "\n");
@@ -326,6 +414,20 @@ public final class TfSettings {
             writer.write("preset.offset.x=" + backupOffsetX + "\n");
             writer.write("preset.offset.y=" + backupOffsetY + "\n");
             writer.write("preset.spacing=" + backupSpacing + "\n");
+            // 每个材质包自己那份字形微调（键名里的包名原样保留，不做大小写转换）
+            if (packKey.length() > 0) {
+                packs.put(packKey, new int[]{offsetX, offsetY, spacing});
+            }
+            for (Map.Entry<String, int[]> entry : packs.entrySet()) {
+                String name = entry.getKey();
+                if (name.length() == 0) {
+                    continue;
+                }
+                int[] value = entry.getValue();
+                writer.write("pack." + name + ".offset.x=" + value[0] + "\n");
+                writer.write("pack." + name + ".offset.y=" + value[1] + "\n");
+                writer.write("pack." + name + ".spacing=" + value[2] + "\n");
+            }
         } catch (Throwable t) {
             Debug.info("settings: cannot write " + file + " " + t);
         } finally {
@@ -340,6 +442,11 @@ public final class TfSettings {
     }
 
     // ------------------------------------------------------------------ 内部
+
+    /** 把内存里的当前值同步进当前包的桶（只改 map，不写文件）。 */
+    private static void storeCurrent() {
+        packs.put(packKey, new int[]{offsetX, offsetY, spacing});
+    }
 
     /** 把设置落实到引擎。字体引擎是重启级别的（要重建字形缓存），隐藏标题是当帧生效。 */
     private static void apply() {
@@ -400,9 +507,12 @@ public final class TfSettings {
                 if (eq < 0) {
                     continue;
                 }
-                String key = line.substring(0, eq).trim().toLowerCase(Locale.US);
+                String rawKey = line.substring(0, eq).trim();
+                String key = rawKey.toLowerCase(Locale.US);
                 String raw = line.substring(eq + 1).trim();
-                if ("font".equals(key)) {
+                if (rawKey.length() > 5 && rawKey.substring(0, 5).equalsIgnoreCase("pack.")) {
+                    readPack(rawKey.substring(5), raw);
+                } else if ("font".equals(key)) {
                     fontEngine = parseBool(raw, fontEngine);
                 } else if ("titles".equals(key)) {
                     hideTitles = parseBool(raw, hideTitles);
@@ -440,6 +550,43 @@ public final class TfSettings {
                     // 读坏了就用默认值
                 }
             }
+        }
+    }
+
+    /**
+     * 读 {@code pack.<包名>.offset.x / .offset.y / .spacing}。
+     *
+     * <p>包名原样保留（可能含中文、空格、{@code §}），只有后缀按小写比较。</p>
+     */
+    private static void readPack(String tail, String raw) {
+        String lower = tail.toLowerCase(Locale.US);
+        int kind;
+        String suffix;
+        if (lower.endsWith(".offset.x")) {
+            kind = 0;
+            suffix = ".offset.x";
+        } else if (lower.endsWith(".offset.y")) {
+            kind = 1;
+            suffix = ".offset.y";
+        } else if (lower.endsWith(".spacing")) {
+            kind = 2;
+            suffix = ".spacing";
+        } else {
+            return;
+        }
+        String name = tail.substring(0, tail.length() - suffix.length());
+        if (name.length() == 0) {
+            return;
+        }
+        int[] value = packs.get(name);
+        if (value == null) {
+            value = new int[3];
+            packs.put(name, value);
+        }
+        if (kind == 2) {
+            value[2] = parseInt(raw, value[2], MIN_SPACING, MAX_SPACING);
+        } else {
+            value[kind] = parseInt(raw, value[kind], MIN_OFFSET, MAX_OFFSET);
         }
     }
 

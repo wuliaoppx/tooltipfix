@@ -224,8 +224,13 @@ public final class GuiTooltipFixSettings extends GuiScreen {
                 cx, hintY + 11, COLOR_HINT);
         this.func_73732_a(this.field_146289_q, "恢复默认 = 引擎开 + 隐藏标题 + 字号 100% + 全零",
                 cx, hintY + 22, COLOR_HINT);
-        this.func_73732_a(this.field_146289_q, "配置文件：config/tooltipfix-hdfont.txt",
-                cx, hintY + 33, COLOR_HINT);
+        // 偏移/间距是按材质包分开存的，得让用户看见现在调的是哪个包那一份
+        String packLine = "当前包：" + TfSettings.packLabel();
+        String path = "config/tooltipfix-hdfont.txt";
+        if (this.field_146289_q.func_78256_a(packLine + " · " + path) <= this.field_146294_l - 8) {
+            packLine = packLine + " · " + path;
+        }
+        this.func_73732_a(this.field_146289_q, packLine, cx, hintY + 33, COLOR_HINT);
     }
 
     @Override

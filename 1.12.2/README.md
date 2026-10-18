@@ -210,6 +210,10 @@ CozyUI 预设三个开关，以及字号、字形 X/Y 偏移、字间距四行�
 字号、偏移、间距都是给「材质包 ttf 与原版中文混排」准备的：字号解决大小，偏移解决**基线/字高对不齐**
 （拉丁走 ttf、中文回退 unifont 时常见一高一低），间距解决**字贴太紧或太松**。
 
+* **偏移和间距按材质包分开存**：不同字体包的基线、side bearing 完全不同，同一组值换包就偏。
+  每个包记住自己那份（键 `pack.<包名>.offset.x / .offset.y / .spacing`），切换/重载资源包时
+  自动换成新包那份；设置界面底部会显示「当前包」。字号是全局的（那是观感偏好，不是对齐问题）。
+  「全部恢复默认」会把所有包各自的那份一起清掉。
 * 偏移只平移 HD 字形本身、**不改前进宽度**，所以不会挤乱排版；步进整数像素，避免半像素落在
   GL_LINEAR 上糊成两像素。
 * 间距改的是前进宽度（`advance`），绘制返回值与 `getStringWidth` 用的是同一个函数，所以居中/右对齐
@@ -228,8 +232,11 @@ CozyUI 预设三个开关，以及字号、字形 X/Y 偏移、字间距四行�
 | `-Dtooltipfix.selftest` | 关 | 自动截图流水线 |
 | `-Dtooltipfix.selftest.world=名字` | `tooltipfix-test` | 自测用世界名 |
 
-`config/tooltipfix-hdfont.txt` 的键：`font=on|off`、`scale=1.00`、`titles=on|off`、
-`offset.x=0`、`offset.y=0`、`spacing=0`、`preset=on|off`（以及 `preset.*` 一组还原用的原值）。
+`config/tooltipfix-hdfont.txt` 的键：`font=on|off`、`scale=1.00`、`titles=on|off`、`preset=on|off`
+（以及 `preset.*` 一组还原用的原值）。字形微调的键带包名：
+`pack.<材质包名>.offset.x`、`pack.<材质包名>.offset.y`、`pack.<材质包名>.spacing`——包名就是资源包
+zip 的文件名（含中文、空格、`§` 颜色码都原样保留）。老版本文件里的全局 `offset.x/offset.y/spacing`
+会自动迁进「当前正在用的那个包」。
 CozyUI 预设 = 字体引擎开 + 字号 100% + 隐藏容器标题 + 偏移/间距全 0，关掉预设会还原打开前的各项。
 
 ## 已知限制
