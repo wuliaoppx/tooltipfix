@@ -12,19 +12,47 @@
 
 [CmdletBinding()]
 param(
-    [string]$SrgJar   = "C:\Users\wuliao\Documents\dsh文件夹\tooltipfix项目文件夹\1.12.2-port\tools\client-1.12.2-srg.jar",
-    [string]$ForgeJar = "D:\mc\.minecraft\libraries\net\minecraftforge\forge\1.12.2-14.23.5.2864\forge-1.12.2-14.23.5.2864.jar",
+    # srg 命名的 MC jar 不能随仓库分发。默认留空 = 自动在几个常见位置找
+    # （环境变量 TOOLTIPFIX_SRG / 仓库内 libs\ / 本地工作目录 1.12.2-port\tools\）。
+    [string]$SrgJar   = "",
+    # 下面三个是本机实例路径，换机器时用同名参数覆盖；留空的从 LibRoot / ModsDir 推。
     [string]$LibRoot   = "D:\mc\.minecraft\libraries",
-    [string]$ProfileJson = "D:\mc\.minecraft\versions\1.12.2-Forge_14.23.5.2864\1.12.2-Forge_14.23.5.2864.json",
     [string]$ModsDir  = "D:\mc\.minecraft\versions\1.12.2-Forge_14.23.5.2864\mods",
+    [string]$ForgeJar = "",
+    [string]$ProfileJson = "",
     [switch]$Deploy
 )
+
+# ---- 派生路径 ------------------------------------------------------------
+if (-not $ForgeJar) {
+    $ForgeJar = Join-Path $LibRoot 'net\minecraftforge\forge\1.12.2-14.23.5.2864\forge-1.12.2-14.23.5.2864.jar'
+}
+if (-not $ProfileJson) {
+    # 启动器把 profile 的 json 放在版本目录里、与目录同名
+    $verDir = Split-Path $ModsDir -Parent
+    $ProfileJson = Join-Path $verDir ((Split-Path $verDir -Leaf) + '.json')
+}
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out  = Join-Path $root 'build'
 $cls  = Join-Path $out 'classes'
 $jarPath = Join-Path $out 'libs\tooltipfix-1.0.0.jar'
+
+# ---- srg jar 定位 --------------------------------------------------------
+if (-not $SrgJar) {
+    $candidates = @(
+        $env:TOOLTIPFIX_SRG,
+        (Join-Path $root 'libs\client-1.12.2-srg.jar'),
+        (Join-Path $root '..\..\1.12.2-port\tools\client-1.12.2-srg.jar')
+    ) | Where-Object { $_ }
+    $SrgJar = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $SrgJar) {
+        throw ("找不到 srg 命名的 MC jar。用 -SrgJar <路径> 指定，或设环境变量 TOOLTIPFIX_SRG。`n" +
+               "  已尝试：`n    " + ($candidates -join "`n    ") + "`n" +
+               "  （= net.minecraft:client:1.12.2:srg 与 forge-1.12.2-14.23.5.2864-srg 合并后的类）")
+    }
+}
 
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Path $cls -Force | Out-Null

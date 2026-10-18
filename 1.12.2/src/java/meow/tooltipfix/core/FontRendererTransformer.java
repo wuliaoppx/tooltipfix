@@ -54,9 +54,9 @@ public final class FontRendererTransformer implements IClassTransformer {
         if (basicClass == null) {
             return null;
         }
-        if ("false".equalsIgnoreCase(System.getProperty("tooltipfix.hdfont"))) {
-            return basicClass;
-        }
+        // 注意：这里**不能**因为 -Dtooltipfix.hdfont=false 就跳过打补丁。打补丁只是装上
+        // 「HD 有字形就走 HdFont，否则走原方法」的分支，引擎开关是运行期判断的
+        // （HdFont.has / available），启动参数关掉之后设置界面还得能把它打开。
         if (!contains(basicClass, MARKER)) {
             return basicClass;
         }

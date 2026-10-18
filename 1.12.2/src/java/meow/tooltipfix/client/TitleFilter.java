@@ -20,11 +20,13 @@ import net.minecraft.client.gui.inventory.GuiContainerCreative;
  * {@code textures/gui/container/*.png} 且栈顶不是 {@code Default} 时，把当前 {@link GuiScreen}
  * 记进 {@link #COVERED}；{@link #hidden} 只对这张屏幕生效。所以原版底图 + 原版字体时行为完全不变。</p>
  *
- * <p>开关：{@code -Dtooltipfix.hidetitles=false} 可关掉。</p>
+ * <p>开关：设置界面里可以随时关（{@link TfSettings}），也可用 {@code -Dtooltipfix.hidetitles=false}
+ * 作为启动默认值。</p>
  */
 public final class TitleFilter {
 
-    private static final boolean ENABLED =
+    /** 开关：{@code -Dtooltipfix.hidetitles=false} 或设置界面（{@link TfSettings}）。 */
+    private static boolean enabled =
             !"false".equalsIgnoreCase(System.getProperty("tooltipfix.hidetitles"));
 
     /** 底图被材质包覆盖过的屏幕（用 identity 语义，换屏幕就是新实例）。 */
@@ -37,9 +39,26 @@ public final class TitleFilter {
     private TitleFilter() {
     }
 
+    /** 当前是否隐藏容器标题（设置界面据此画开关）。 */
+    public static boolean enabled() {
+        return enabled;
+    }
+
+    /** 运行期开关：关掉时顺手清空「已覆盖」集合，下一帧立刻恢复画标题。 */
+    public static void setEnabled(boolean value) {
+        if (enabled == value) {
+            return;
+        }
+        enabled = value;
+        if (!value) {
+            reset();
+        }
+        Debug.info("hidetitles: " + (value ? "on" : "off") + " (settings)");
+    }
+
     /** {@link LegacySheets#blit} 画到材质包覆盖的容器底图时调用。 */
     public static void noteCovered() {
-        if (!ENABLED) {
+        if (!enabled) {
             return;
         }
         Minecraft mc = Minecraft.func_71410_x();
@@ -67,7 +86,7 @@ public final class TitleFilter {
      * @return true = 这行字该吞掉（返回 0，不画）
      */
     public static boolean hidden(String text, int x, int y) {
-        if (!ENABLED || text == null || text.isEmpty()) {
+        if (!enabled || text == null || text.isEmpty()) {
             return false;
         }
         Minecraft mc = Minecraft.func_71410_x();

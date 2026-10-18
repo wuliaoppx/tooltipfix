@@ -154,6 +154,22 @@ public final class Hooks {
         }
     }
 
+    /**
+     * 注入点：资源包界面 {@code GuiScreenResourcePacks.drawScreen} 的 return 之前
+     * （{@code ResourcePackUiTransformer}）。
+     *
+     * <p>只借这个「每帧都被调用一次、且在 super.drawScreen 之后」的位置画两块自绘控件
+     * （字号滑块 + 设置入口）；抛异常就什么都不画，绝不能影响原版界面。</p>
+     */
+    public static void resourcePackScreen(net.minecraft.client.gui.GuiScreen screen,
+                                          int mouseX, int mouseY) {
+        try {
+            TooltipFixOverlay.draw(screen, mouseX, mouseY);
+        } catch (Throwable t) {
+            report("resourcePackScreen", t);
+        }
+    }
+
     private static void report(String site, Throwable t) {
         synchronized (REPORTED) {
             if (!REPORTED.add(site)) {

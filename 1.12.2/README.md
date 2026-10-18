@@ -24,9 +24,11 @@ FML 的 coremod（`TooltipFixCore` + `IClassTransformer`）在类加载期改写
 | `GuiScreenTransformer` | `GuiScreen.func_146279_a`(3 参) / `func_146285_a`(4 参 tooltip) | 整方法体替换 |
 | `PanoramaTransformer` | `GuiMainMenu` 里画全景图的私有 `(IIF)V` | 整方法体替换 |
 | `FontRendererTransformer` | `FontRenderer.a(CZ)F` / `a(C)I` / `a(String)I` / `a(String;III)I` | 改名 + 生成 wrapper |
+| `ResourcePackUiTransformer` | 「资源包」界面 `drawScreen` 尾部 | 插一条 `INVOKESTATIC`，画设置入口 |
 
 注意：transformer 跑在 `FMLDeobfuscatingRemapper` **之前**，看到的是混淆名（`bip`、`a`、`func_73729_b` 的
-srg 名），所以四个 transformer 全部靠**结构匹配**（方法描述符 + 方法体里的特征常量）定位，不能硬编码类名。
+srg 名），所以五个 transformer 全部靠**结构匹配**（方法描述符 + 方法体里的特征常量）定位，不能硬编码类名。
+匹配不上的时候一个字节都不动——宁可不生效，也不能改坏别人的界面。
 
 ## 目录结构
 
@@ -37,7 +39,7 @@ srg 名），所以四个 transformer 全部靠**结构匹配**（方法描述�
     ├── resources/mcmod.info
     └── java/meow/tooltipfix/
         ├── TooltipFixMod.java      # @Mod 入口：注册资源重载监听、tick 钩子
-        ├── core/                   # 4 个 transformer + TooltipFixCore
+        ├── core/                   # 5 个 transformer + TooltipFixCore
         └── client/
             ├── Hooks.java          # 贴图分派链入口（被 transformer 调用）
             ├── GuiSprite.java      # 材质包 sprite 的加载/缓存/九宫格/动画帧
@@ -50,10 +52,14 @@ srg 名），所以四个 transformer 全部靠**结构匹配**（方法描述�
             ├── SlotSprites.java    # 物品格
             ├── LegacySheets.java   # 老式整图图集（4x HD）的 UV 重映射
             ├── Panorama.java       # 主菜单全景图
-            ├── HdFont.java         # HD 字体引擎（bitmap provider）
+            ├── HdFont.java         # HD 字体引擎（bitmap / ttf / legacy ascii）
             ├── AsciiLayout.java    # 原版 ascii.png 的 16x16 网格 → 字符表
             ├── FontSmoothing.java  # 字体线性过滤（opt-in）
             ├── TitleFilter.java    # 隐藏容器 GUI 标题
+            ├── TfSettings.java     # 设置本体：读写 config/ + 通知各模块
+            ├── GuiTooltipFixSettings.java # 设置界面（开关 / 字号 / 偏移 / 间距）
+            ├── FontScaleSlider.java# 字号滑块（自绘，不进 buttonList）
+            ├── TooltipFixOverlay.java # 资源包界面上的入口按钮 + 滑块
             └── SelfTest.java       # 自测：自动截图流水线
 ```
 
@@ -61,7 +67,8 @@ srg 名），所以四个 transformer 全部靠**结构匹配**（方法描述�
 
 1.12.2 的 srg 命名 MC jar 不能随仓库分发，需要本地生成一份
 （`net.minecraft:client:1.12.2:srg` + Forge 的 `forge-1.12.2-14.23.5.2864-srg` 合并成
-`client-1.12.2-srg.jar`），然后：
+`client-1.12.2-srg.jar`）。`build.ps1` 会自动找 `-SrgJar` → 环境变量 `TOOLTIPFIX_SRG` →
+`1.12.2\libs\` → 相邻的 `1.12.2-port\tools\`，都没命中就直接报错并列出试过的路径。然后：
 
 ```powershell
 # 只编译打包 → build/libs/tooltipfix-1.0.0.jar
@@ -74,6 +81,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Deploy
 依赖清单直接从启动器的 profile json（`versions\1.12.2-Forge_14.23.5.2864\*.json`）读，
 保证和运行期是同一批 jar（1.12.2 是 LWJGL **2**，手写清单最容易在这里翻车）。
 编译固定 `--release 8`：1.12.2 跑在 Java 8，class 版本必须 ≤ 52。
+
+脚本里只剩两个本机路径：`-LibRoot`（默认 `D:\mc\.minecraft\libraries`）与 `-ModsDir`
+（默认本地测试实例）。`-ForgeJar` / `-ProfileJson` 留空时会从这两个推出来，换机器时按需覆盖：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Deploy `
+  -LibRoot "$env:APPDATA\.minecraft\libraries" `
+  -ModsDir "$env:APPDATA\.minecraft\mods"
+```
 
 ## 核心机制
 
@@ -175,22 +191,43 @@ java -Dtooltipfix.selftest=true -Dtooltipfix.debug=true ...
 
 截图落在 `screenshots\selftest-*.png`（`00-mainmenu` / `01-hud` / `02-inventory-*` /
 `03-creative-*` / `04-tooltip-*` / `05-world` / `06-itemtooltip-*` / `07-cooldown` /
-`08-attack-indicator`），每个界面都成对截「装了模组」和 `-Dtooltipfix.passthrough=true`
-（纯原版行为）两张，方便直接 A/B。日志里 grep `[tooltipfix]` 就能看到每个 sprite 来自哪个包。
+`08-attack-indicator` / `09-resourcepacks-overlay` / `10~14-settings-*`），每个界面都成对截「装了模组」和
+`-Dtooltipfix.passthrough=true`（纯原版行为）两张，方便直接 A/B。日志里 grep `[tooltipfix]` 就能看到每个
+sprite 来自哪个包。自测跑完会把设置复位成默认值，不会把测试用的字号/偏移留给下一次启动。
+
+> 自测里直接用 `TfSettings.setXxx()` 改值，绕过了按钮回调 `refreshLabels()`，所以那几张图里按钮文字
+> 可能和实际状态不同步；手点不会出现这种情况。
 
 ## 开关一览
+
+游戏内入口：**资源包（材质包）界面左下角「TooltipFix 设置…」**——里面有字体引擎、隐藏容器标题、
+CozyUI 预设三个开关，以及字号滑块、字形 X/Y 偏移、字间距，改完立刻生效并写入
+`config/tooltipfix-hdfont.txt`。字体引擎关掉之后这个按钮仍然在（不然就再也打不开了）。
+
+字号、偏移、间距都是给「材质包 ttf 与原版中文混排」准备的：字号解决大小，偏移解决**基线/字高对不齐**
+（拉丁走 ttf、中文回退 unifont 时常见一高一低），间距解决**字贴太紧或太松**。
+
+* 偏移只平移 HD 字形本身、**不改前进宽度**，所以不会挤乱排版；步进整数像素，避免半像素落在
+  GL_LINEAR 上糊成两像素。
+* 间距改的是前进宽度（`advance`），绘制返回值与 `getStringWidth` 用的是同一个函数，所以居中/右对齐
+  不会错位；结果夹到 `>= 0`，调成很负也只是字挨在一起，不会让光标往回走。
 
 | 系统属性 | 默认 | 作用 |
 | --- | --- | --- |
 | `-Dtooltipfix.debug` | 关 | 打开 `[tooltipfix]` 详细日志 |
 | `-Dtooltipfix.passthrough` | 关 | 全部 sprite 直通原版（最快 A/B：判断「这块是不是我们画的」） |
-| `-Dtooltipfix.hdfont=false` | 开 | 关掉 HD 字体引擎 |
+| `-Dtooltipfix.hdfont=false` | 开 | 字体引擎的启动默认值（游戏内设置界面可随时再打开） |
 | `-Dtooltipfix.hdfont.density=N` | 4 | 字体重采样倍率（4 = 材质包原分辨率） |
-| `-Dtooltipfix.hdfont.ttfscale=N` | 自动 | ttf 放大倍率；不设 = 自动抬到 8px 逻辑字号的下限，`1` = 严格按包的 size，`2` = 两倍 |
+| `-Dtooltipfix.hdfont.ttfscale=N` | 自动 | ttf 放大倍率；不设 = 自动抬到 6.5px 逻辑字号的下限再乘字号滑块，`1` = 严格按包的 size，`2` = 两倍 |
+| `-Dtooltipfix.hdfont.scale=N` | 1.0 | 字号倍率的启动默认值（等同于设置界面里的滑块，范围 0.5–2.0） |
 | `-Dtooltipfix.fontsmooth` | 关 | 老式 128×128 字体走线性过滤（默认最近邻，更锐利） |
-| `-Dtooltipfix.hidetitles=false` | 开 | 不隐藏容器标题 |
+| `-Dtooltipfix.hidetitles=false` | 开 | 隐藏容器标题的启动默认值（游戏内可切） |
 | `-Dtooltipfix.selftest` | 关 | 自动截图流水线 |
 | `-Dtooltipfix.selftest.world=名字` | `tooltipfix-test` | 自测用世界名 |
+
+`config/tooltipfix-hdfont.txt` 的键：`font=on|off`、`scale=1.00`、`titles=on|off`、
+`offset.x=0`、`offset.y=0`、`spacing=0`、`preset=on|off`（以及 `preset.*` 一组还原用的原值）。
+CozyUI 预设 = 字体引擎开 + 字号 100% + 隐藏容器标题 + 偏移/间距全 0，关掉预设会还原打开前的各项。
 
 ## 已知限制
 

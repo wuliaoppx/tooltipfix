@@ -31,9 +31,15 @@ import org.lwjgl.opengl.GL11;
  */
 public final class HdFont {
 
-    /** 关掉 HD 字体引擎（退回 1.12.2 原生 8px 管线）。 */
-    public static final boolean ENABLED =
+    /**
+     * HD 字体引擎开关：启动默认取 {@code -Dtooltipfix.hdfont}，之后由设置界面
+     * （{@link TfSettings}）在运行期改写，见 {@link #setEnabled(boolean)}。
+     */
+    private static boolean enabled =
             !"false".equalsIgnoreCase(System.getProperty("tooltipfix.hdfont"));
+
+    /** 正在解析字体定义：解析途中再触发一次 {@link #reload()} 会把状态写乱，直接挡掉。 */
+    private static boolean parsing;
 
     /** 1.12.2 里 posY 到基线的距离（ascii 格子 8 行，'A' 占 0..6、'g' 到底 7）。 */
     private static final float BASELINE = 7.0F;
@@ -44,8 +50,13 @@ public final class HdFont {
     /** 原版对空格硬编码 4 像素，这里保持一致（材质包的空格格子里没有墨，算出来会是 1）。 */
     private static final int SPACE_ADVANCE = 4;
 
-    /** ttf 字号的「可读性下限」：小于这个逻辑字号就抬上来（原版 ascii 是 8px 高）。 */
-    private static final float TTF_MIN_EM = 8.0F;
+    /**
+     * ttf 字号的默认下限：包里的 {@code size} 小于它就先抬到它再乘用户倍率。
+     *
+     * <p>原版 ascii 的大写字高是 7px；这里取 6.5 ——比原版略瘦、比包原样（例如 5.5）
+     * 厚实，落在 1.12.2 那套 9px 排版网格里不会顶行。再想调就靠材质包界面的滑块。</p>
+     */
+    private static final float TTF_MIN_EM = 6.5F;
 
     /** ttf 放大倍率上限，防止异常 json 把字放到撑破界面。 */
     private static final float TTF_MAX_SCALE = 4.0F;
@@ -95,6 +106,9 @@ public final class HdFont {
      * {@code ascii.png} 的字体包、字符串里的中文）必须交回原版管线，否则会整片消失。</p>
      */
     public static boolean has(char c) {
+        if (!available) {
+            return false; // 引擎关着（或还没装载完）时整条路交回原版方法
+        }
         if (c == ' ') {
             return true;
         }
@@ -181,7 +195,7 @@ public final class HdFont {
             return -1;
         }
         if (c == ' ') {
-            return SPACE_ADVANCE;
+            return spaced(SPACE_ADVANCE);
         }
         Glyph g = GLYPHS[c];
         if (g == null) {
@@ -191,7 +205,17 @@ public final class HdFont {
             return 0;
         }
         ensureProvider(g.provider);
-        return g.advance < 0 ? 0 : g.advance;
+        return g.advance < 0 ? 0 : spaced(g.advance);
+    }
+
+    /**
+     * 给一个字形的前进宽度加上玩家的字间距。
+     *
+     * <p>结果夹到 &gt;= 0：字间距调到很负时宁可让字挤在一起，也不能让光标往回走——
+     * 那会把后面整行的排版算乱（{@code getStringWidth} 与逐字绘制的累加值必须一致）。</p>
+     */
+    private static int spaced(int advance) {
+        return Math.max(0, advance + TfSettings.spacing());
     }
 
     /** 诊断用：按字形前进宽度累加整行，和 FontRenderer#getStringWidth 对比。 */
@@ -244,7 +268,7 @@ public final class HdFont {
     /** 画一个字形，返回前进宽度（语义同 FontRenderer 的字符绘制方法）。 */
     public static float draw(float x, float y, char c, boolean italic) {
         if (c == ' ') {
-            return (float) SPACE_ADVANCE;
+            return (float) spaced(SPACE_ADVANCE);
         }
         Glyph g = GLYPHS[c];
         if (g == null) {
@@ -259,9 +283,12 @@ public final class HdFont {
         }
         // 对齐到整数像素：调用方常用 (width - textWidth) / 2 这类半像素坐标，
         // 字形一旦落在半像素上，GL_LINEAR 采样就会把笔画糊成两像素宽。
-        float top = Math.round(y) + BASELINE - g.ascent;
+        // 玩家偏移（设置界面里的 X/Y）是整数像素，加在取整之后，同样不会破坏对齐。
+        int offX = TfSettings.offsetX();
+        int offY = TfSettings.offsetY();
+        float top = Math.round(y) + BASELINE - g.ascent + offY;
         float shear = italic ? 1.0F : 0.0F;
-        float left = Math.round(x) + g.xOff;
+        float left = Math.round(x) + g.xOff + offX;
         float right = left + g.width;
         float bottom = top + g.height;
         GlStateManager.func_179144_i(g.provider.texture);
@@ -275,16 +302,49 @@ public final class HdFont {
         GlStateManager.func_187426_b(g.u1, g.v0);
         GlStateManager.func_187435_e(right + shear, top, 0.0F);
         GlStateManager.func_187437_J();
-        return (float) g.advance;
+        return (float) spaced(g.advance);
     }
 
     // ---------------------------------------------------------------- 装载
 
     /** 资源包重载后调用：下一次查询时重新解析字体定义。 */
     public static void reload() {
-        if (!ENABLED) {
+        if (!enabled) {
             return;
         }
+        clear();
+        ensure();
+    }
+
+    /** 引擎当前是否启用（设置界面据此画开关）。 */
+    public static boolean enabled() {
+        return enabled;
+    }
+
+    /**
+     * 运行期开关字体引擎。
+     *
+     * <p>关掉会把已上传的图集和字形缓存一起丢掉：{@link #available} 一旦变 false，
+     * transformer 注入的分支当帧就全部改走原版方法（{@link #has(char)} 先看它），
+     * 屏幕上的字立刻回到 1.12.2 原生 8px 管线。</p>
+     */
+    public static void setEnabled(boolean value) {
+        if (enabled == value) {
+            return;
+        }
+        enabled = value;
+        if (value) {
+            dirty = true;
+            reload();
+        } else {
+            clear();
+            dirty = false; // 关着的时候别再让 tick() 去 ensure()
+        }
+        Debug.info("hdfont: engine " + (value ? "on" : "off") + " (settings)");
+    }
+
+    /** 丢掉所有字形缓存与 GL 贴图，但不碰开关状态。 */
+    private static void clear() {
         for (Provider p : providers) {
             if (p.texture > 0) {
                 PENDING_DELETE.add(p.texture);
@@ -303,7 +363,6 @@ public final class HdFont {
         glyphCount = 0;
         available = false;
         dirty = true;
-        ensure();
     }
 
     /**
@@ -365,10 +424,10 @@ public final class HdFont {
     }
 
     private static void ensure() {
-        if (!dirty) {
+        if (!dirty || parsing) {
             return;
         }
-        if (!ENABLED) {
+        if (!enabled) {
             dirty = false;
             return;
         }
@@ -377,6 +436,7 @@ public final class HdFont {
             return;
         }
         dirty = false;
+        parsing = true;
         try {
             List<Provider> list = new ArrayList<Provider>();
             // 字体包/材质包自带的 ascii.png 排第一：它的拉丁字形优先于 default.json 里的拉丁页，
@@ -433,12 +493,19 @@ public final class HdFont {
                 }
             }
             lineHeight = maxH > 0 ? Math.max(9, maxH) : 9;
+            if (!enabled) {
+                // 解析途中被设置界面关掉了（读配置触发的重入）：别把刚建好的 provider 留在身上
+                clear();
+                return;
+            }
             Debug.info("hdfont: providers=" + providers.length + " glyphs=" + glyphCount
                     + " lineHeight=" + lineHeight
                     + " -> " + (available ? "HD font ON" : "HD font OFF"));
         } catch (Throwable t) {
             Debug.info("hdfont: parse failed " + t);
             available = false;
+        } finally {
+            parsing = false;
         }
     }
 
@@ -528,10 +595,11 @@ public final class HdFont {
      * 的设定。想看得清楚就得放大，所以这里给一个「可读性下限」：</p>
      *
      * <ul>
-     *   <li>{@code -Dtooltipfix.hdfont.ttfscale=N}（N &gt; 0）：直接按 N 倍放大，1.0 = 严格
-     *       按包声明的 size（关掉下限）；</li>
-     *   <li>不设该属性：自动把逻辑字号抬到 {@link #TTF_MIN_EM}（= 原版 ascii 的 8px），
-     *       本来就不小于 8 的包不受影响；</li>
+     *   <li>先按「1.12.2 排版兼容下限」托底：逻辑字号小于 {@link #TTF_MIN_EM} 的包抬到
+     *       6.5（原版 ascii 大写字高 7px），本来就不小于它的包不受影响；</li>
+     *   <li>再乘用户倍率 {@link #userScale()}（材质包界面滑块 / config 文件 / 系统属性）；</li>
+     *   <li>{@code -Dtooltipfix.hdfont.ttfscale=N}（N &gt; 0）：跳过上面两步，直接按 N 倍，
+     *       1.0 = 严格按包声明的 size；</li>
      *   <li>上限 {@link #TTF_MAX_SCALE} 倍，避免异常 json 把字放到撑破界面。</li>
      * </ul>
      */
@@ -548,10 +616,48 @@ public final class HdFont {
             scale = 0.0F;
         }
         if (scale <= 0.0F) {
-            scale = size > 0.0F ? Math.max(1.0F, TTF_MIN_EM / size) : 1.0F;
+            float base = size > 0.0F ? Math.max(1.0F, TTF_MIN_EM / size) : 1.0F;
+            scale = base * userScale();
         }
-        return Math.min(TTF_MAX_SCALE, scale);
+        return Math.min(TTF_MAX_SCALE, Math.max(0.1F, scale));
     }
+
+    // ------------------------------------------------------------ 用户字号倍率
+
+    /** 有没有可缩放的矢量字体（材质包界面的滑块据此决定要不要露脸）。 */
+    public static boolean hasTtf() {
+        return enabled && TTF != null;
+    }
+
+    /** 当前用户字号倍率（1.0 = 包原样，受下限托底）；真相存在 {@link TfSettings}。 */
+    public static float userScale() {
+        return TfSettings.scale();
+    }
+
+    /**
+     * 改用户字号倍率并立刻生效。
+     *
+     * <p>{@link #reload()} 里 {@code ensure()} 只重建 AWT 字体、不上传图集，所以拖滑块时可以
+     * 一路实时刷新；标量没变就直接返回，免得每帧重来一遍。写盘由
+     * {@link #saveUserScale()}（松手时）负责。</p>
+     */
+    public static void setUserScale(float value) {
+        float next = TfSettings.clampScale(value);
+        if (Math.abs(next - userScale()) < 0.005F) {
+            return;
+        }
+        TfSettings.setScale(next);
+        if (enabled) {
+            reload();
+        }
+        Debug.info("hdfont: user scale = " + next);
+    }
+
+    /** 把当前倍率写回 config，写失败只记一行日志（不影响游戏）。 */
+    public static void saveUserScale() {
+        TfSettings.save();
+    }
+
 
     /**
      * {@code "type":"ttf"} provider：1.13+ 的矢量字体，1.12.2 完全没有对应实现。

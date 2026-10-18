@@ -8,6 +8,7 @@
 
 | 目录 | Minecraft | 加载器 | 版本 | 产物 |
 | --- | --- | --- | --- | --- |
+| [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.0 | `tooltipfix-1.0.0.jar` |
 | [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.28 | `tooltipfix-1.20.1-forge-*.jar` + `tooltipfix-1.20.1-fabric-*.jar` |
 | [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.4 | `tooltipfix-1.21.1-fabric-*.jar` |
 | [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.6 | `tooltipfix-1.0.6.jar` |
@@ -44,6 +45,18 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 
 1.21.1 原版本体就已经把这些控件改成 GUI sprite 绘制（`Gui` 里的 `hud/*`、`AbstractButton` 里的 `widget/button*`、`EffectRenderingInventoryScreen` / `Gui` 里的 `effect_background*`），所以**材质包在 1.21.1 上是开箱即用的，模组只补 tooltip、格子高亮、`stretch_inner` 这三块**；1.20.1 完全没有 GUI sprite 管线，才需要模组把上面每一行都补出来。药水效果背景在 1.20.1 上于 1.0.17 完成（HUD 24×24 与物品栏效果列表 120×32 / 32×32 两处）。
 
+### 1.12.2 分支
+
+1.12.2 比 1.20.1 还早：**连 `textures/gui/sprites/` 这套资源位置都不存在**，也没有 Mixin。
+所以那条线是完全不同的实现——FML coremod 在类加载期改写 `Gui` / `GuiScreen` / `FontRenderer` /
+`GuiMainMenu` 的方法体，把 1.21.2 材质包提供的 sprite 映射到 1.12.2 的绘制调用上，
+并把 1.13+ 的字体（`font/default.json` 的 bitmap / ttf provider、以及第三方只给
+`textures/font/ascii.png` 的老式字体包）一并接管。
+
+它**不是**「把 CozyUI 的观感搬进 1.12.2」：模组自己不带美术资源，每一处替换的前提都是
+「当前材质包确实提供了这个资源」，没有就原样回落原版行为。细节、开关与已知限制见
+[`1.12.2/README.md`](1.12.2/README.md)。
+
 ### 效果
 
 | 容器底板 / 格子 / 按钮 | 物品提示框 | 生命·饥饿·经验条·快捷栏 | 药水效果（HUD + 物品栏列表） |
@@ -64,14 +77,24 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 3. 重启游戏。
 
 材质包没提供某张贴图时，该控件自动回落原版绘制，不会变成黑白格。
-1.21.1 两个变体是纯客户端补丁模组，不需要 Fabric API / 其它前置。
+1.21.1 两个变体是纯客户端补丁模组，不需要 Fabric API / 其它前置；1.12.2 也是纯客户端，
+额外要求 Forge 14.23.5.2864，并在游戏内「资源包」界面左下角提供设置入口。
 
 ## 构建
 
-三个变体都**不用 Gradle**：`javac` 对着具名（mojmap）的 Minecraft 类编译 → `tools/Remap.java`
-（自写的 ASM 重映射器）把整个 jar 改写成目标加载器的运行期命名空间 → 拼装资源与元数据。
+三条线都**不用 Gradle**，各自带一个 `build.ps1`：
+
+| 目录 | 编译对象 | 产物怎么来 |
+| --- | --- | --- |
+| `1.12.2` | srg 命名的 MC + Forge jar（`javac` 直接编） | 打出 jar，`FMLCorePlugin` 写在 manifest 里 |
+| `1.20.1` | 具名（mojmap）的 MC 类 | `1.20.1/tools/Remap.java`（自写的 ASM 重映射器）把整个 jar 改写成目标加载器命名空间 → 拼装资源与元数据 |
+| `1.21.1-*` | 具名 MC 类 | 同上，走 Fabric / NeoForge 各自的名字空间 |
 
 ```powershell
+# 1.12.2：编译 + 打包（-Deploy 顺便丢进实例的 mods/）
+powershell -NoProfile -ExecutionPolicy Bypass -File 1.12.2\build.ps1 -Deploy
+
+# 1.20.1 / 1.21.1：需要 JDK 21
 set JAVA_HOME=C:\Program Files\<jdk 21>
 powershell -NoProfile -ExecutionPolicy Bypass -File 1.20.1\build.ps1
 ```
@@ -83,14 +106,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 1.20.1\build.ps1
 
 这些是 Mojang 的版权物或机器相关的路径，不随仓库分发：
 
-| 缺什么 | 1.20.1 | 1.21.1 Fabric | 1.21.1 NeoForge | 怎么补 |
-| --- | :-: | :-: | :-: | --- |
-| 具名 Minecraft 类 | `1.20.1-named.jar`（放 `1.20.1\`） | `-NamedClasses <dir>` | `-NamedMcClasses <dir>` | ForgeGradle / NeoGradle 的 named 输出，或用 Vineflower 反编译 client jar |
-| 映射表 `tools\maps\*.tiny` | ✔ | ✔ | — | 由 `tools/build-maps.js` + `tools/hierarchy.js` 从 Mojang 映射表生成 |
-| ASM 9.7 jar 路径 `tools\asm-cp.txt` | ✔ | ✔ | — | 复制 `tools\asm-cp.txt.example` 填自己的路径 |
-| `.minecraft\libraries` | ✔ | ✔ | ✔ | 任意装过对应加载器的实例（`-McRoot` 指定，默认 `%APPDATA%\.minecraft`） |
+| 缺什么 | 1.12.2 | 1.20.1 | 1.21.1 Fabric | 1.21.1 NeoForge | 怎么补 |
+| --- | :-: | :-: | :-: | :-: | --- |
+| MC 运行期命名的类 jar | `client-1.12.2-srg.jar`（`-SrgJar` 指定） | `1.20.1-named.jar`（放 `1.20.1\`） | `-NamedClasses <dir>` | `-NamedMcClasses <dir>` | ForgeGradle / NeoGradle 的输出，或用 Vineflower 反编译 client jar 后重映射 |
+| 映射表 `tools\maps\*.tiny` | — | ✔ | ✔ | — | 由 `1.20.1/tools/build-maps.js` + `1.20.1/tools/hierarchy.js` 从 Mojang 映射表生成 |
+| ASM 9.7 jar 路径 `tools\asm-cp.txt` | — | ✔ | ✔ | — | 复制 `1.20.1/tools/asm-cp.txt.example` 填自己的路径 |
+| `.minecraft\libraries` | ✔ | ✔ | ✔ | ✔ | 任意装过对应加载器的实例（`-LibRoot` / `-McRoot` 指定，默认 `%APPDATA%\.minecraft`） |
 
-`tools/Remap.java` 会在第一次构建时自动编译，不需要预先生成 `tools\remap-build`。
+`1.20.1/tools/Remap.java` 会在第一次构建时自动编译，不需要预先生成 `tools\remap-build`。
+`1.12.2` 那条线的依赖清单直接从启动器的 profile json 读（1.12.2 是 LWJGL **2**，手写清单最容易翻车），
+srg jar 找不到时 `build.ps1` 会依次试几个常见位置，都没有就报错并说明该放哪。
 
 ## 已知取舍
 

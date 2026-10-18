@@ -221,7 +221,66 @@ public final class SelfTest {
                 shoot(mc, "04-tooltip-vanilla");
                 Debug.passthrough = false;
                 mc.func_147108_a(null);
-                // 07-cooldown 已经在 stage 20 截过了（必须在世界 HUD 上截），这里直接收尾
+                // 07-cooldown 已经在 stage 20 截过了（必须在世界 HUD 上截），这里接着拍设置界面
+                stage = 30;
+                wait = 6;
+                return;
+            case 30:
+                // 资源包界面：左上角字号滑块 + 左下角「TooltipFix 设置…」入口（都是注入点画的）
+                mc.func_147108_a(new net.minecraft.client.gui.GuiScreenResourcePacks(new GuiMainMenu()));
+                stage = 31;
+                wait = 10;
+                return;
+            case 31:
+                shoot(mc, "09-resourcepacks-overlay");
+                mc.func_147108_a(new GuiTooltipFixSettings(mc.field_71462_r));
+                stage = 32;
+                wait = 10;
+                return;
+            case 32:
+                shoot(mc, "10-settings-default");
+                // CozyUI 预设：字号 100% + 隐藏标题 + 字体引擎开
+                TfSettings.setPreset(true);
+                stage = 33;
+                wait = 8;
+                return;
+            case 33:
+                shoot(mc, "11-settings-preset-on");
+                // 关掉字体引擎：这屏上的字当帧就该变回 1.12.2 原生 8px
+                TfSettings.setFontEngine(false);
+                stage = 34;
+                wait = 8;
+                return;
+            case 34:
+                shoot(mc, "12-settings-engine-off");
+                TfSettings.setFontEngine(true);
+                // 偏移：只挪 HD 字形，排版不该动
+                TfSettings.setOffset(2, -2);
+                stage = 35;
+                wait = 8;
+                return;
+            case 35:
+                shoot(mc, "13-settings-offset");
+                TfSettings.setOffset(0, 0);
+                // 字间距：只改前进宽度，字形本身不该动
+                TfSettings.setSpacing(2);
+                stage = 36;
+                wait = 8;
+                return;
+            case 36:
+                shoot(mc, "14-settings-spacing");
+                // 复位成「一切默认」，别把自测的设置留给下一次正常启动
+                TfSettings.setPreset(false);
+                TfSettings.setFontEngine(true);
+                TfSettings.setHideTitles(true);
+                HdFont.setUserScale(1.0F); // 这个会顺手重建字形缓存
+                TfSettings.setOffset(0, 0);
+                TfSettings.setSpacing(0);
+                TfSettings.save();
+                LOGGER.info("[tooltipfix] selftest: settings reset (font={} titles={} preset={} scale={} off={},{} sp={})",
+                        TfSettings.fontEngine(), TfSettings.hideTitles(),
+                        TfSettings.preset(), TfSettings.scale(),
+                        TfSettings.offsetX(), TfSettings.offsetY(), TfSettings.spacing());
                 stage = 14;
                 wait = 6;
                 return;

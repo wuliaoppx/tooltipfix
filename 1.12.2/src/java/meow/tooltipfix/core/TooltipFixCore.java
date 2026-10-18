@@ -19,7 +19,8 @@ public final class TooltipFixCore implements IFMLLoadingPlugin {
     @Override
     public String[] getASMTransformerClass() {
         return new String[]{GuiTransformer.class.getName(), GuiScreenTransformer.class.getName(),
-                PanoramaTransformer.class.getName(), FontRendererTransformer.class.getName()};
+                PanoramaTransformer.class.getName(), FontRendererTransformer.class.getName(),
+                ResourcePackUiTransformer.class.getName()};
     }
 
     @Override

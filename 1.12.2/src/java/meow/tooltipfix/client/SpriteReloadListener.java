@@ -13,7 +13,9 @@ public final class SpriteReloadListener implements IResourceManagerReloadListene
 
     @Override
     public void func_110549_a(IResourceManager manager) {
-        // 顺序：先丢引用（其它类的 reset 只清自己的字段），最后 invalidateCache 统一删 GL 贴图。
+        // 顺序：先读玩家设置（它可能改写字体引擎开关），再丢引用（其它类的 reset 只清自己的字段），
+        // 最后 invalidateCache 统一删 GL 贴图。
+        TfSettings.load();
         TooltipSprites.reset();
         SlotSprites.reset();
         WidgetSprites.reset();

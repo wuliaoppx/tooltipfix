@@ -6,15 +6,16 @@ out/
 # dependencies / generated mapping data that must not be redistributed
 *.jar
 !src/**/*.jar
+libs/
 1.20.1-named.jar
-tools/maps/
-tools/maps2/
-tools/remap-build/
-tools/named-classes/
-tools/joined.tsrg
-tools/*.tiny
-tools/asm-cp.txt
-tools/client-*.txt
+**/tools/maps/
+**/tools/maps2/
+**/tools/remap-build/
+**/tools/named-classes/
+**/tools/joined.tsrg
+**/tools/*.tiny
+**/tools/asm-cp.txt
+**/tools/client-*.txt
 
 # IDE / OS
 .idea/
