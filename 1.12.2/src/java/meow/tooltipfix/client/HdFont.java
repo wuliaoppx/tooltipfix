@@ -44,6 +44,12 @@ public final class HdFont {
     /** 原版对空格硬编码 4 像素，这里保持一致（材质包的空格格子里没有墨，算出来会是 1）。 */
     private static final int SPACE_ADVANCE = 4;
 
+    /** ttf 字号的「可读性下限」：小于这个逻辑字号就抬上来（原版 ascii 是 8px 高）。 */
+    private static final float TTF_MIN_EM = 8.0F;
+
+    /** ttf 放大倍率上限，防止异常 json 把字放到撑破界面。 */
+    private static final float TTF_MAX_SCALE = 4.0F;
+
     private static final Glyph[] GLYPHS = new Glyph[65536];
 
     /** 懒 provider 试过但字体里没有这个字形（避免每次都重新栅格化一次）。 */
@@ -514,6 +520,40 @@ public final class HdFont {
     }
 
     /**
+     * ttf 的额外放大倍率。
+     *
+     * <p>现代版本把 ttf 的 {@code size} 当「行高像素」用：原版默认 11，正好对应 8px 高的
+     * ascii 字形。有些字体包写 {@code size:5.5}（原版一半），字形缩到 5.5 逻辑像素后笔画
+     * 只剩亚像素宽度，抗锯齿一摊就变成灰蒙蒙的细线——1.21.2 上同样是这个样子，属于包本身
+     * 的设定。想看得清楚就得放大，所以这里给一个「可读性下限」：</p>
+     *
+     * <ul>
+     *   <li>{@code -Dtooltipfix.hdfont.ttfscale=N}（N &gt; 0）：直接按 N 倍放大，1.0 = 严格
+     *       按包声明的 size（关掉下限）；</li>
+     *   <li>不设该属性：自动把逻辑字号抬到 {@link #TTF_MIN_EM}（= 原版 ascii 的 8px），
+     *       本来就不小于 8 的包不受影响；</li>
+     *   <li>上限 {@link #TTF_MAX_SCALE} 倍，避免异常 json 把字放到撑破界面。</li>
+     * </ul>
+     */
+    private static float ttfScale(float size) {
+        String prop = System.getProperty("tooltipfix.hdfont.ttfscale");
+        float scale;
+        if (prop != null) {
+            try {
+                scale = Float.parseFloat(prop.trim());
+            } catch (NumberFormatException e) {
+                scale = 0.0F;
+            }
+        } else {
+            scale = 0.0F;
+        }
+        if (scale <= 0.0F) {
+            scale = size > 0.0F ? Math.max(1.0F, TTF_MIN_EM / size) : 1.0F;
+        }
+        return Math.min(TTF_MAX_SCALE, scale);
+    }
+
+    /**
      * {@code "type":"ttf"} provider：1.13+ 的矢量字体，1.12.2 完全没有对应实现。
      *
      * <p>这里用 AWT 把它栅格化：{@code size} 是逻辑字号（GUI px 的 em 高度），
@@ -552,7 +592,9 @@ public final class HdFont {
             try (InputStream in = res.func_110527_b()) {
                 awt = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, in);
             }
-            awt = awt.deriveFont(size * Math.max(1, oversample));
+            float scale = ttfScale(size);
+            float em = size * scale;
+            awt = awt.deriveFont(em * Math.max(1, oversample));
             java.awt.font.FontRenderContext frc =
                     new java.awt.font.FontRenderContext(null, true, false);
             java.awt.font.LineMetrics lm = awt.getLineMetrics("Ag\u591c", frc);
@@ -567,9 +609,9 @@ public final class HdFont {
             p.ascent = Math.round(asc);
             p.drawW = 0;
             p.codepoints = new int[0];
-            TTF = new Ttf(p, awt, Math.max(1, oversample), shiftX, shiftY);
+            TTF = new Ttf(p, awt, Math.max(1, oversample), shiftX * scale, shiftY * scale);
             Debug.info("hdfont: ttf provider '" + file + "' pack='" + res.func_177240_d()
-                    + "' size=" + size + " oversample=" + oversample
+                    + "' size=" + size + " scale=" + scale + " oversample=" + oversample
                     + " ascent=" + p.ascent + " height=" + p.drawH);
             return p;
         } catch (Throwable t) {

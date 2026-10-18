@@ -186,6 +186,7 @@ java -Dtooltipfix.selftest=true -Dtooltipfix.debug=true ...
 | `-Dtooltipfix.passthrough` | 关 | 全部 sprite 直通原版（最快 A/B：判断「这块是不是我们画的」） |
 | `-Dtooltipfix.hdfont=false` | 开 | 关掉 HD 字体引擎 |
 | `-Dtooltipfix.hdfont.density=N` | 4 | 字体重采样倍率（4 = 材质包原分辨率） |
+| `-Dtooltipfix.hdfont.ttfscale=N` | 自动 | ttf 放大倍率；不设 = 自动抬到 8px 逻辑字号的下限，`1` = 严格按包的 size，`2` = 两倍 |
 | `-Dtooltipfix.fontsmooth` | 关 | 老式 128×128 字体走线性过滤（默认最近邻，更锐利） |
 | `-Dtooltipfix.hidetitles=false` | 开 | 不隐藏容器标题 |
 | `-Dtooltipfix.selftest` | 关 | 自动截图流水线 |
