@@ -77,6 +77,15 @@ public final class LoaderNames {
      */
     public static final String RENDER = "m_88315_";
 
+    /** SystemToast#renderBackgroundRow(GuiGraphics, ToastComponent, int width, int vOff, int y, int h) 的 SRG 名。 */
+    public static final String TOAST_RENDER_BACKGROUND_ROW = "m_280654_";
+
+    /** SystemToast#render(GuiGraphics, ToastComponent, long) 的 SRG 名。 */
+    public static final String TOAST_RENDER = "m_7172_";
+
+    /** GuiGraphics#blit(ResourceLocation,int,int,int,int,int,int) 的 @At target（SRG 命名空间）。 */
+    public static final String GUI_GRAPHICS_BLIT_7_TARGET =
+            "Lnet/minecraft/client/gui/GuiGraphics;m_280218_(Lnet/minecraft/resources/ResourceLocation;IIIIII)V";
     private LoaderNames() {
     }
 }

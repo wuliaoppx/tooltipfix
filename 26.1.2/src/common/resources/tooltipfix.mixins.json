@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "meow.tooltipfix.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "",
+  "client": [
+    "GuiGraphicsExtractorAccess",
+    "SystemToastMixin",
+    "ToastSelftestMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

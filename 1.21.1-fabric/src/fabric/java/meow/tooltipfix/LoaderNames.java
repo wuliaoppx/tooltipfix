@@ -26,6 +26,23 @@ public final class LoaderNames {
      */
     public static final String RENDER_SLOT_HIGHLIGHT = "method_33285";
 
+    /** {@code SystemToast.renderBackgroundRow(GuiGraphics, int width, int vOff, int y, int h)} */
+    public static final String TOAST_RENDER_BACKGROUND_ROW = "method_29046";
+
+    /** {@code SystemToast.render(GuiGraphics, ToastComponent, long)} */
+    public static final String TOAST_RENDER = "method_1986";
+
+    /** {@code ToastComponent.render(GuiGraphics)} */
+    public static final String TOAST_COMPONENT_RENDER = "method_1996";
+
+    /** {@code GuiGraphics.blitSprite(ResourceLocation, int, int, int, int)} */
+    public static final String GUI_GRAPHICS_BLIT_SPRITE =
+            "Lnet/minecraft/class_332;method_52706(Lnet/minecraft/class_2960;IIII)V";
+
+    /** {@code Gui.tick()} - runs every client tick, used to poll the config file. */
+    public static final String GUI_TICK = "method_1748";
+    public static final String RUN_TICK = "method_1523";
+
     private LoaderNames() {
     }
 }

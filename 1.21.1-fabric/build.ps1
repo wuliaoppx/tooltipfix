@@ -1,23 +1,18 @@
-# Builds tooltipfix for Fabric 1.21.1.
+﻿# Builds tooltipfix for Fabric 1.21.1.
 #
-# No Gradle: javac compiles against official-name (named) 1.21.1 classes, then tools/Remap.java
-# rewrites the whole jar into Fabric's intermediary namespace. The mixins use remap=false with the
-# literal intermediary names in meow/tooltipfix/LoaderNames.java, so the jar needs no refmap.
-#
-# Requirements that are NOT in this repository (see README.md):
-#   -NamedClasses <dir>              named 1.21.1 Minecraft classes (auto-detected in the NeoGradle
-#                                    cache when omitted)
-#   $PortRoot\tools\maps\named-intermediary.tiny
-#   $PortRoot\tools\asm-cp.txt       paths to the ASM 9.7 jars (copy tools\asm-cp.txt.example)
+# No Gradle: javac compiles against the official-name (named) 1.21.1 classes that NeoGradle already
+# cached, then Remap rewrites the whole jar into Fabric's intermediary namespace. The mixins use
+# remap=false with the literal intermediary names in meow/tooltipfix/LoaderNames.java, so the jar
+# needs no refmap.
 #
 # NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads .ps1 as the system ANSI codepage
 # unless the file has a UTF-8 BOM, so non-ASCII comments here corrupt the script.
 param(
-    [string]$PortRoot = $PSScriptRoot,
+    [string]$PortRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$ProjectRoot = $PSScriptRoot,
-    [string]$McRoot = (Join-Path $env:APPDATA ".minecraft"),
-    [string]$NamedClasses = "",
-    [string]$Version = "1.0.4"
+    [string]$McRoot = "D:\mc\.minecraft",
+    [string]$NamedClasses = "C:\Users\wuliao\.gradle\caches\ng_execute\892a6d87e73843e04c92ec725a9ef92cda0ba33144231da04016433ac26eaedc\output",
+    [string]$Version = "1.0.6"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,29 +20,17 @@ function Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
 $libs = Join-Path $McRoot "libraries"
 $remapClasses = Join-Path $PortRoot "tools\remap-build"
-$asmCpFile = Join-Path $PortRoot "tools\asm-cp.txt"
-if (-not (Test-Path -LiteralPath $asmCpFile)) {
-    throw "missing dependency: $asmCpFile - copy tools\asm-cp.txt.example to tools\asm-cp.txt and list the ASM 9.7 jar paths in it, one per line"
-}
-$asmCp = @(Get-Content -LiteralPath $asmCpFile | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() })
+$remapCp = "$remapClasses;" + ((Get-Content (Join-Path $PortRoot "tools\asm-cp.txt")) -join ";")
 $mixinJar = Join-Path $libs "net\fabricmc\sponge-mixin\0.17.4+mixin.0.8.7\sponge-mixin-0.17.4+mixin.0.8.7.jar"
 $gsonJar = Join-Path $libs "com\google\code\gson\gson\2.10.1\gson-2.10.1.jar"
 $slf4jJar = Join-Path $libs "org\slf4j\slf4j-api\2.0.9\slf4j-api-2.0.9.jar"
 $lwjglJar = Join-Path $libs "org\lwjgl\lwjgl-opengl\3.3.3\lwjgl-opengl-3.3.3.jar"
+$glfwJar = Join-Path $libs "org\lwjgl\lwjgl-glfw\3.3.3\lwjgl-glfw-3.3.3.jar"
+$brigJar = Join-Path $libs "com\mojang\brigadier\1.3.11\brigadier-1.3.11.jar"
+$jomlJar = Join-Path $libs "org\joml\joml\1.10.5\joml-1.10.5.jar"
 $mapFile = Join-Path $PortRoot "tools\maps\named-intermediary.tiny"
 
-if (-not $NamedClasses) {
-    # The NeoGradle decompile/recompile cache holds the fully named 1.21.1 joined classes.
-    $probe = Get-ChildItem "$env:USERPROFILE\.gradle\caches\ng_execute" -Recurse -Directory -Filter "output" -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path (Join-Path $_.FullName "net\minecraft\client\gui\GuiGraphics.class") } |
-        Select-Object -First 1
-    if ($probe) { $NamedClasses = $probe.FullName }
-}
-if (-not $NamedClasses) {
-    throw "could not find the named 1.21.1 classes - pass -NamedClasses <dir> (a directory holding net\minecraft\...)"
-}
-
-foreach ($f in @($mixinJar, $gsonJar, $slf4jJar, $lwjglJar, $mapFile, $NamedClasses)) {
+foreach ($f in @($remapClasses, $mixinJar, $gsonJar, $slf4jJar, $lwjglJar, $brigJar, $jomlJar, $mapFile, $NamedClasses)) {
     if (-not (Test-Path -LiteralPath $f)) { throw "missing dependency: $f" }
 }
 
@@ -55,14 +38,6 @@ $java = Join-Path $env:JAVA_HOME "bin\java.exe"
 $javac = Join-Path $env:JAVA_HOME "bin\javac.exe"
 $jarTool = Join-Path $env:JAVA_HOME "bin\jar.exe"
 if (-not (Test-Path $javac)) { $javac = "javac"; $jarTool = "jar"; $java = "java" }
-
-if (-not (Test-Path -LiteralPath $remapClasses)) {
-    Step "compile tools/Remap.java"
-    New-Item -ItemType Directory -Force -Path $remapClasses | Out-Null
-    & $javac -encoding UTF-8 --release 17 -nowarn -proc:none -cp ($asmCp -join ";") -d $remapClasses (Join-Path $PortRoot "tools\Remap.java")
-    if ($LASTEXITCODE -ne 0) { throw "failed to compile tools/Remap.java" }
-}
-$remapCp = "$remapClasses;" + ($asmCp -join ";")
 
 $build = Join-Path $ProjectRoot "build"
 $commonSrc = Join-Path $ProjectRoot "src\common\java"
@@ -74,7 +49,7 @@ Step "compile"
 $out = Join-Path $build "classes"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-$cp = (@($NamedClasses, $mixinJar, $gsonJar, $slf4jJar, $lwjglJar) | Select-Object -Unique) -join ";"
+$cp = (@($NamedClasses, $mixinJar, $gsonJar, $slf4jJar, $lwjglJar, $glfwJar, $brigJar, $jomlJar) | Select-Object -Unique) -join ";"
 $sources = @()
 $sources += Get-ChildItem $commonSrc -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 $sources += Get-ChildItem $fabricSrc -Recurse -Filter *.java | ForEach-Object { $_.FullName }

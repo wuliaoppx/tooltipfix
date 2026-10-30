@@ -61,6 +61,15 @@ public final class LoaderNames {
      */
     public static final String RENDER = "m_88315_";
 
+    /** SystemToast#renderBackgroundRow(GuiGraphics, ToastComponent, int width, int vOff, int y, int h) 的 intermediary 名。 */
+    public static final String TOAST_RENDER_BACKGROUND_ROW = "method_29046";
+
+    /** SystemToast#render(GuiGraphics, ToastComponent, long) 的 intermediary 名。 */
+    public static final String TOAST_RENDER = "method_1986";
+
+    /** GuiGraphics#blit(ResourceLocation,int,int,int,int,int,int) 的 @At target（intermediary 命名空间）。 */
+    public static final String GUI_GRAPHICS_BLIT_7_TARGET =
+            "Lnet/minecraft/class_332;method_25302(Lnet/minecraft/class_2960;IIIIII)V";
     private LoaderNames() {
     }
 }

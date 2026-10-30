@@ -22,7 +22,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 @Mod(
         modid = TooltipFixMod.MODID,
         name = "TooltipFix",
-        version = "1.0.0",
+        version = "1.0.1",
         clientSideOnly = true,
         acceptableRemoteVersions = "*",
         acceptedMinecraftVersions = "[1.12,1.12.2]"
@@ -51,6 +51,8 @@ public final class TooltipFixMod {
         if (event.phase == TickEvent.Phase.END) {
             FontSmoothing.tick();
             HdFont.tick();
+            // tooltip 的接管开关：即使这一帧没有 tooltip，也要把配置文件读起来。
+            meow.tooltipfix.client.TooltipMode.tick();
         }
     }
 }

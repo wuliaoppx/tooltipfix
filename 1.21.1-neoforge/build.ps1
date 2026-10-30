@@ -1,4 +1,4 @@
-# Builds tooltipfix-<version>.jar (1.21.1 NeoForge) without Gradle.
+﻿# Builds tooltipfix-<version>.jar (1.21.1 NeoForge) without Gradle.
 #
 # The mod is a pure patch mod: it only needs the named Minecraft classes plus the NeoForge/FML
 # runtime that is already installed for the 1.21.1 NeoForge instance, so plain javac + jar is enough.
@@ -6,7 +6,7 @@
 # use, so mixins need no refmap.
 
 param(
-    [string]$Version = "1.0.6",
+    [string]$Version = "1.0.8",
     [string]$ProjectRoot = $PSScriptRoot,
     [string]$McRoot = (Join-Path $env:APPDATA ".minecraft"),
     [string]$NamedMcClasses = ""

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "tooltipfix",
+  "version": "1.0.0",
+  "icon": "assets/tooltipfix/icon.png",
+  "name": "TooltipFix",
+  "description": "Draws the system toast background at the sizes the resource pack declared instead of letting the vanilla nine slice clamp every border to half of the toast height.",
+  "authors": [
+    "wuliao"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "mixins": [
+    "tooltipfix.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=26.1.2"
+  }
+}

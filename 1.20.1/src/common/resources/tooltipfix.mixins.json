@@ -8,7 +8,8 @@
     "AbstractContainerScreenMixin",
     "EffectRenderingInventoryScreenMixin",
     "GuiHudMixin",
-    "TooltipRenderUtilMixin"
+    "TooltipRenderUtilMixin",
+    "SystemToastBoxMixin"
   ],
   "injectors": {
     "defaultRequire": 1

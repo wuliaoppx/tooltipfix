@@ -8,10 +8,16 @@
 
 | 目录 | Minecraft | 加载器 | 版本 | 产物 |
 | --- | --- | --- | --- | --- |
-| [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.0 | `tooltipfix-1.0.0.jar` |
-| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.28 | `tooltipfix-1.20.1-forge-*.jar` + `tooltipfix-1.20.1-fabric-*.jar` |
-| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.4 | `tooltipfix-1.21.1-fabric-*.jar` |
-| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.6 | `tooltipfix-1.0.6.jar` |
+| [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.1 | `tooltipfix-forge-1.12.2-1.0.1.jar` |
+| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.29 | `tooltipfix-forge-1.20.1-1.0.29.jar` + `tooltipfix-fabric-1.20.1-1.0.29.jar` |
+| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.6 | `tooltipfix-fabric-1.21.1-1.0.6.jar` |
+| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.8 | `tooltipfix-neoforge-1.21.1-1.0.8.jar` |
+| [`1.21.11`](1.21.11) | 1.21.11 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-1.21.11-1.0.0.jar` |
+| [`26.1.2`](26.1.2) | 26.1.2 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-26.1.2-1.0.0.jar` |
+
+> 发布产物统一按 **`tooltipfix-<加载器>-<游戏版本>-<模组版本>.jar`** 命名。
+> 1.21.11 与 26.1.2 两个变体**只修系统提示框（toast）**，不含物品悬浮框替换；
+> 1.12.2 / 1.20.1 / 1.21.1 三个变体既修 toast 也替换悬浮框（1.12.2 无 toast 修复，只做悬浮框与字体）。
 
 ## 背景
 
@@ -135,6 +141,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File 1.20.1\build.ps1
 `1.20.1/tools/Remap.java` 会在第一次构建时自动编译，不需要预先生成 `tools\remap-build`。
 `1.12.2` 那条线的依赖清单直接从启动器的 profile json 读（1.12.2 是 LWJGL **2**，手写清单最容易翻车），
 srg jar 找不到时 `build.ps1` 会依次试几个常见位置，都没有就报错并说明该放哪。
+
+## 与 ModernUI 共存（默认让位给 ModernUI）
+
+装了 [ModernUI](https://github.com/BloCamLimb/ModernUI-MC) 时，**默认使用 ModernUI 的悬浮框**，本模组不抢：
+
+ModernUI 在 `RenderTooltipEvent.Pre` 上按 `HIGH` 优先级自己画框，再按 `LOW` 优先级把事件取消，
+原版路径（也就是本模组的注入点）被短路，结果是「只显示现代化 UI 的提示框」。
+所以 1.20.1 与 1.21.1 变体提供了开关，配置文件 **`config/tooltipfix-tooltip.txt`**（带注释，保存即生效，0.25 秒轮询）：
+
+| 值 | 行为 |
+| --- | --- |
+| `auto`（默认） | 装了 ModernUI 就让给它；没装则用 TooltipFix |
+| `tooltipfix` | 始终用 TooltipFix 的材质包外框（会把 ModernUI 的 `TooltipRenderer.sTooltip` 置为 `false`，切回时还原） |
+| `vanilla` | 始终不接管，保留原版/其它模组画的外框 |
+
+日志里可以看到实际生效的结果（`latest.log` 搜 `tooltip box`）：
+`tooltip box: mode=auto modernui=true -> modernui`。
+1.12.2 变体没有 ModernUI 可用，但配置文件与取值保持一致（`auto` 与 `vanilla` 在该版本等价）。
+
+## 发布命名
+
+```
+tooltipfix-<加载器>-<游戏版本>-<模组版本>.jar
+```
+
+例如 `tooltipfix-forge-1.20.1-1.0.29.jar`、`tooltipfix-fabric-1.21.1-1.0.6.jar`、
+`tooltipfix-neoforge-26.1.2-1.0.0.jar`。加载器取 `forge` / `fabric` / `neoforge`。
 
 ## 已知取舍
 

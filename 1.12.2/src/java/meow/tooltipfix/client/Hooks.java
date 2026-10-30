@@ -141,6 +141,12 @@ public final class Hooks {
                 "[tooltipfix] tooltip call screen=" + screenName + " lines=" + lineCount
                         + (font == null ? "" : " font=" + font.getClass().getName()));
         try {
+            // config/tooltipfix-tooltip.txt 里 mode=vanilla（或 auto + 检测到 ModernUI）时不接管，
+            // 按原版样式画。方法体已经被 coremod 换掉，所以这里必须自己补画，不能直接 return。
+            if (!TooltipMode.takeOver()) {
+                TooltipSprites.drawFallback(screen, lines, mouseX, mouseY, font);
+                return;
+            }
             TooltipSprites.draw(screen, lines, mouseX, mouseY, font);
         } catch (Throwable t) {
             report("tooltip", t);

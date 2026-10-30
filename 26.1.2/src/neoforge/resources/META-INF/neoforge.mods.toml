@@ -1,0 +1,30 @@
+modLoader="javafml"
+loaderVersion="[11,)"
+license="MIT"
+
+[[mods]]
+modId="tooltipfix"
+version="1.0.0"
+displayName="TooltipFix"
+logoFile="icon.png"
+description='''
+Draws the system toast background at the sizes the resource pack declared instead of letting the
+vanilla nine slice clamp every border to half of the toast height.
+'''
+
+[[mixins]]
+config="tooltipfix.mixins.json"
+
+[[dependencies.tooltipfix]]
+modId="neoforge"
+type="required"
+versionRange="[26.1,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.tooltipfix]]
+modId="minecraft"
+type="required"
+versionRange="[26.1,26.2)"
+ordering="NONE"
+side="CLIENT"

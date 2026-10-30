@@ -3,6 +3,7 @@ package meow.tooltipfix.mixin;
 import meow.tooltipfix.LoaderNames;
 import meow.tooltipfix.client.EffectSprites;
 import meow.tooltipfix.client.HudSprites;
+import meow.tooltipfix.client.ToastSelftest;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
@@ -32,6 +33,8 @@ public abstract class GuiHudMixin {
             at = @At(value = "INVOKE", target = LoaderNames.GUI_GRAPHICS_BLIT_7, remap = false))
     private void tooltipfix$hudBlit(GuiGraphics graphics, ResourceLocation texture,
                                     int x, int y, int u, int v, int width, int height) {
+        meow.tooltipfix.client.TooltipMode.tick();
+        ToastSelftest.tick();
         if (!HudSprites.drawOriginalBlit(graphics, texture, x, y, u, v, width, height)) {
             graphics.blit(texture, x, y, u, v, width, height);
         }

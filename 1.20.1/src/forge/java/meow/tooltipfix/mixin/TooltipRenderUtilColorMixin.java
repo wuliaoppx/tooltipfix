@@ -1,6 +1,7 @@
 package meow.tooltipfix.mixin;
 
 import meow.tooltipfix.LoaderNames;
+import meow.tooltipfix.client.TooltipMode;
 import meow.tooltipfix.client.TooltipSprites;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.tooltip.TooltipRenderUtil;
@@ -28,6 +29,9 @@ public abstract class TooltipRenderUtilColorMixin {
     private static void tooltipfix$renderSpriteBackgroundColored(
             GuiGraphics graphics, int x, int y, int width, int height, int z,
             int backgroundTop, int backgroundBottom, int borderTop, int borderBottom, CallbackInfo ci) {
+        if (!TooltipMode.takeOver()) {
+            return;
+        }
         if (TooltipSprites.render(graphics, x, y, width, height, z)) {
             ci.cancel();
         }

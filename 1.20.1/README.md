@@ -91,6 +91,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 -McRoot "%APPDATA%
 
 材质包没提供的 sprite 一律回落原版绘制，所以不装材质包时行为与 1.20.1 原版一致。
 
+## 与 ModernUI 共存
+
+ModernUI（modid `modernui`）会接管 tooltip：它在 `RenderTooltipEvent.Pre` 上用 **HIGH** 优先级自己画框，
+再用 **LOW** 优先级 `setCanceled(true)`，于是原版 `renderTooltipBackground` 根本不会执行 —— 这就是
+「装了 ModernUI 就只剩现代风格的框」的原因。它留了一个公开开关
+`icyllis.modernui.mc.TooltipRenderer.sTooltip`：关掉之后它既不画也不取消，原版路径回来，本模组就能接管。
+
+配置文件 `config/tooltipfix-tooltip.txt`，**保存即生效**（250ms 轮询，不用重启游戏）：
+
+| 值 | 行为 |
+| --- | --- |
+| `auto`（默认） | 装了 ModernUI 就让给 ModernUI，没装则用本模组； |
+| `tooltipfix` | 始终用本模组的外框，同时把 ModernUI 的 `sTooltip` 置为 `false`； |
+| `vanilla` | 始终不接管，保留原版（或 ModernUI）的外框。也接受 `off` / `none`。 |
+
+日志（`tooltipfix-tooltip` 这个名字下）每次状态切换只打一行，例如：
+
+```
+tooltip box: mode=tooltipfix modernui=true -> tooltipfix
+tooltip box: modernui TooltipRenderer.sTooltip=false
+```
+
+切回 `auto`/`vanilla` 时会把 `sTooltip` 还原成 `true`，不会把 ModernUI 永久关掉。
+没有安装 ModernUI 时这个开关没有任何副作用。
 ## 已知取舍
 
 - 动画自己按 `animation.frametime` / `frames` 算 V 偏移，**不实现 `interpolate`** 帧间插值。

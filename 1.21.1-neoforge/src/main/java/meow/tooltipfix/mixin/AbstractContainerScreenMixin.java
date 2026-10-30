@@ -28,8 +28,18 @@ public abstract class AbstractContainerScreenMixin {
             require = 0)
     private static void tooltipfix$slotHighlightSprites(
             GuiGraphics graphics, int x, int y, int z, int color, CallbackInfo ci) {
+        meow.tooltipfix.client.TooltipMode.tick();
+        meow.tooltipfix.client.TooltipSelftest.tick(net.minecraft.client.Minecraft.getInstance());
         if (SlotSprites.draw(graphics, x, y, z)) {
             ci.cancel();
         }
+    }
+
+    @Inject(
+            method = "render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
+            at = @At("HEAD"),
+            require = 0)
+    private void tooltipfix$selftestTick(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        meow.tooltipfix.client.TooltipSelftest.tick(net.minecraft.client.Minecraft.getInstance());
     }
 }
