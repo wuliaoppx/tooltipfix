@@ -252,19 +252,6 @@ zip 的文件名（含中文、空格、`§` 颜色码都原样保留）。老�
 会自动迁进「当前正在用的那个包」。
 CozyUI 预设 = 字体引擎开 + 字号 100% + 隐藏容器标题 + 偏移/间距全 0，关掉预设会还原打开前的各项。
 
-### 悬浮框接管开关 `config/tooltipfix-tooltip.txt`
-
-与 1.20.1 / 1.21.1 变体同名同语义（带注释，保存即生效，0.25 秒轮询）：
-
-| 值 | 行为 |
-| --- | --- |
-| `auto`（默认） | 装了接管 tooltip 的模组（ModernUI）就让给它，否则用 TooltipFix |
-| `tooltipfix` | 始终用材质包外框 |
-| `vanilla` | 始终按原版渐变框画 |
-
-1.12.2 没有 ModernUI 可用，所以 `auto` 与 `vanilla` 在这一版等价：都画原版样式的框。
-日志里能看到实际结果（`latest.log` 搜 `tooltip box`）：`tooltip box: mode=auto modernui=false -> tooltipfix`。
-
 ## 已知限制
 
 * **emoji**：CozyUI 的 `emoji_05_*.png` 依赖 `font/default.json` 里的 emoji provider；

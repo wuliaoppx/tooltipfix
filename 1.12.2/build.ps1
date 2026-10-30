@@ -5,7 +5,7 @@
 # 直接用本机已装好的 1.12.2 运行库编译就行。
 #
 # 用法：
-#   pwsh -File build.ps1                 # 编译 + 打包到 build/libs/tooltipfix-1.0.1.jar
+#   pwsh -File build.ps1                 # 编译 + 打包到 build/libs/tooltipfix-1.0.0.jar
 #   pwsh -File build.ps1 -Deploy         # 另外把 jar 丢进 1.12.2 实例的 mods/
 #
 # 编译用 --release 8：1.12.2 运行在 Java 8，class 文件版本必须 ≤ 52。
@@ -37,7 +37,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out  = Join-Path $root 'build'
 $cls  = Join-Path $out 'classes'
-$jarPath = Join-Path $out 'libs\tooltipfix-1.0.1.jar'
+$jarPath = Join-Path $out 'libs\tooltipfix-1.0.0.jar'
 
 # ---- srg jar 定位 --------------------------------------------------------
 if (-not $SrgJar) {
