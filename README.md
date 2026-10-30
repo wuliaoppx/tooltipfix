@@ -8,7 +8,7 @@
 
 | 目录 | Minecraft | 加载器 | 版本 | 产物 |
 | --- | --- | --- | --- | --- |
-| [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.1 | `tooltipfix-forge-1.12.2-1.0.1.jar` |
+| [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.0 | `tooltipfix-forge-1.12.2-1.0.0.jar` |
 | [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.29 | `tooltipfix-forge-1.20.1-1.0.29.jar` + `tooltipfix-fabric-1.20.1-1.0.29.jar` |
 | [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.6 | `tooltipfix-fabric-1.21.1-1.0.6.jar` |
 | [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.8 | `tooltipfix-neoforge-1.21.1-1.0.8.jar` |
@@ -158,7 +158,7 @@ ModernUI 在 `RenderTooltipEvent.Pre` 上按 `HIGH` 优先级自己画框，再�
 
 日志里可以看到实际生效的结果（`latest.log` 搜 `tooltip box`）：
 `tooltip box: mode=auto modernui=true -> modernui`。
-1.12.2 变体没有 ModernUI 可用，但配置文件与取值保持一致（`auto` 与 `vanilla` 在该版本等价）。
+1.12.2 变体没有这个开关——ModernUI 没有 1.12.2 版本，那里不存在冲突。
 
 ## 发布命名
 
