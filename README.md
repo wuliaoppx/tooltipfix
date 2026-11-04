@@ -9,9 +9,9 @@
 | 目录 | Minecraft | 加载器 | 版本 | 产物 |
 | --- | --- | --- | --- | --- |
 | [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.0 | `tooltipfix-forge-1.12.2-1.0.0.jar` |
-| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.29 | `tooltipfix-forge-1.20.1-1.0.29.jar` + `tooltipfix-fabric-1.20.1-1.0.29.jar` |
-| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.6 | `tooltipfix-fabric-1.21.1-1.0.6.jar` |
-| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.8 | `tooltipfix-neoforge-1.21.1-1.0.8.jar` |
+| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.30 | `tooltipfix-forge-1.20.1-1.0.30.jar` + `tooltipfix-fabric-1.20.1-1.0.30.jar` |
+| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.7 | `tooltipfix-fabric-1.21.1-1.0.7.jar` |
+| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.9 | `tooltipfix-neoforge-1.21.1-1.0.9.jar` |
 | [`1.21.11`](1.21.11) | 1.21.11 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-1.21.11-1.0.0.jar` |
 | [`26.1.2`](26.1.2) | 26.1.2 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-26.1.2-1.0.0.jar` |
 
@@ -48,6 +48,12 @@ assets/minecraft/textures/gui/sprites/widget/button*.png         按钮底板
 | 按钮底板（`widget/button*`、滑条、输入框、复选框、标签页） | ✅ 模组 | ✅ 原版 | ✅ 原版 |
 | 药水效果背景（`hud/effect_background(_ambient)`、`container/inventory/effect_background_large/_small`） | ✅ 模组 | ✅ 原版 | ✅ 原版 |
 | 动画 sprite（`.mcmeta` 的 `animation.frames` / `frametime`） | ✅ 模组 | 原版管线 | 原版管线 |
+| **Jade 顶部信息框**（`jade:tooltip/<theme>_background`） | ✅ 模组 1.0.30 | ✅ 模组 1.0.7 | ✅ 模组 1.0.9 |
+
+> Jade 那一行是另一套资源位置：材质包把 `assets/jade/textures/gui/sprites/tooltip/{waila,dark,create}_background.png`
+> 换成自己的贴图即可，**不需要写主题 json**（1.21.11 就是这么工作的）。1.21.1 的 Jade 自身已带贴图式外框机制，
+> 只是内置主题被 `version` 100–199 的门槛锁在颜色式，模组只是把主题切到贴图式；1.20.1 的 Jade 完全没有这套机制，
+> 由模组自己按九宫格画。没装 Jade、或包里没有这张贴图时，一行代码都不介入。
 
 1.21.1 原版本体就已经把这些控件改成 GUI sprite 绘制（`Gui` 里的 `hud/*`、`AbstractButton` 里的 `widget/button*`、`EffectRenderingInventoryScreen` / `Gui` 里的 `effect_background*`），所以**材质包在 1.21.1 上是开箱即用的，模组只补 tooltip、格子高亮、`stretch_inner` 这三块**；1.20.1 完全没有 GUI sprite 管线，才需要模组把上面每一行都补出来。药水效果背景在 1.20.1 上于 1.0.17 完成（HUD 24×24 与物品栏效果列表 120×32 / 32×32 两处）。
 
@@ -166,7 +172,7 @@ ModernUI 在 `RenderTooltipEvent.Pre` 上按 `HIGH` 优先级自己画框，再�
 tooltipfix-<加载器>-<游戏版本>-<模组版本>.jar
 ```
 
-例如 `tooltipfix-forge-1.20.1-1.0.29.jar`、`tooltipfix-fabric-1.21.1-1.0.6.jar`、
+例如 `tooltipfix-forge-1.20.1-1.0.30.jar`、`tooltipfix-fabric-1.21.1-1.0.7.jar`、
 `tooltipfix-neoforge-26.1.2-1.0.0.jar`。加载器取 `forge` / `fabric` / `neoforge`。
 
 ## 已知取舍
