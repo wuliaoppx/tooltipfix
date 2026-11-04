@@ -46,11 +46,21 @@ public final class GuiSprite {
     private static final java.util.Set<String> LOGGED_LOAD = new java.util.HashSet<>();
 
     /**
-     * 需要 GL_LINEAR 过滤的 sprite 贴图（只点这两张，理由见 {@link #applyLinearFilter}）。
+     * 需要 GL_LINEAR 过滤的 sprite 贴图（理由见 {@link #applyLinearFilter}）。
+     *
+     * <p>默认点名两张 slot_highlight；其它「本模组点名接管、且材质包用 4 倍超采样」的 sprite
+     * 可以运行时用 {@link #markLinear(ResourceLocation)} 加进来（Jade 信息框就是这么做的）。
      */
-    private static final java.util.Set<ResourceLocation> LINEAR_TEXTURES = java.util.Set.of(
+    private static final java.util.Set<ResourceLocation> LINEAR_TEXTURES = new java.util.HashSet<>(java.util.List.of(
             textureOf(new ResourceLocation("minecraft", "container/slot_highlight_back")),
-            textureOf(new ResourceLocation("minecraft", "container/slot_highlight_front")));
+            textureOf(new ResourceLocation("minecraft", "container/slot_highlight_front"))));
+
+    /** 让某张贴图走 GL_LINEAR（只影响点名的 sprite，不做全局处理）。 */
+    public static void markLinear(ResourceLocation texture) {
+        if (texture != null) {
+            LINEAR_TEXTURES.add(texture);
+        }
+    }
 
     /** GUI sprite 的贴图 id 前缀，和 1.21.2 里 {@code SpriteSourceList} 注册的路径一致。 */
     public static final String SPRITE_DIRECTORY = "textures/gui/sprites/";

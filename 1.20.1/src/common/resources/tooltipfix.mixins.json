@@ -8,6 +8,7 @@
     "AbstractContainerScreenMixin",
     "EffectRenderingInventoryScreenMixin",
     "GuiHudMixin",
+    "JadeOverlayMixin",
     "TooltipRenderUtilMixin",
     "SystemToastBoxMixin"
   ],

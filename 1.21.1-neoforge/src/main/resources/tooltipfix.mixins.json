@@ -11,7 +11,8 @@
     "MinecraftMixin",
     "SystemToastMixin",
     "ToastComponentMixin",
-    "TooltipRenderUtilMixin"
+    "TooltipRenderUtilMixin",
+    "JadeThemeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
