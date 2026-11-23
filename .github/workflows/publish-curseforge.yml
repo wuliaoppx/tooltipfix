@@ -1,0 +1,84 @@
+name: Publish to CurseForge
+
+# Mirrors the jar assets of an existing GitHub Release to CurseForge.
+# Builds stay local on purpose: they need the author's absolute Minecraft library paths,
+# so this workflow never compiles anything - it only downloads and uploads.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag whose jar assets should be mirrored to CurseForge'
+        required: true
+        default: 'v1.2.0'
+      release_type:
+        description: 'CurseForge release type: alpha | beta | release'
+        required: true
+        default: 'release'
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      CF_PROJECT_ID: '1750387'
+    steps:
+      - name: Check secret
+        env:
+          CF_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          if [ -z "${CF_TOKEN}" ]; then
+            echo "::error::Repository secret CURSEFORGE_TOKEN is missing. Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "token present (${#CF_TOKEN} chars)"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p jars
+          gh release download "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern 'tooltipfix-*.jar' \
+            --dir jars
+          ls -l jars
+
+      - name: Upload each jar with its game versions
+        env:
+          CF_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          declare -A LOADER=( [forge]=Forge [fabric]=Fabric [neoforge]=NeoForge )
+          fail=0
+          for jar in jars/tooltipfix-*.jar; do
+            base=$(basename "$jar" .jar)
+            IFS='-' read -r _project loader mcver modver <<< "$base"
+            loader_name="${LOADER[$loader]:-}"
+            if [ -z "$loader_name" ]; then
+              echo "::warning::skip $base: unknown loader '$loader'"
+              continue
+            fi
+            meta=$(printf '{"displayName":"TooltipFix %s %s %s","releaseType":"%s","gameVersions":["%s","%s"],"changelog":"Full notes: https://github.com/%s/releases/tag/%s","changelogType":"markdown"}' \
+              "$mcver" "$loader_name" "$modver" "$RELEASE_TYPE" "$mcver" "$loader_name" "$REPO" "$TAG")
+            printf '%s' "$meta" > meta.json
+            echo "  metadata: $meta"
+            code=$(curl -sS -o resp.txt -w '%{http_code}' \
+              -H "X-Api-Token: ${CF_TOKEN}" \
+              -F "metadata=@meta.json;type=application/json" \
+              -F "file=@${jar}" \
+              "https://minecraft.curseforge.com/api/projects/${CF_PROJECT_ID}/upload")
+            echo "${base} [${mcver}/${loader_name}] -> HTTP ${code}"
+            head -c 400 resp.txt; echo
+            case "$code" in
+              2*) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::at least one upload failed - see the per-file HTTP codes above"
+            exit 1
+          fi
+          echo "all uploads accepted"
