@@ -1,6 +1,6 @@
 name: CF Upload Probe
 
-# Throwaway diagnostic: isolates which part of the CurseForge upload request is rejected.
+# Throwaway diagnostic: which host/path still accepts a CurseForge upload.
 on:
   workflow_dispatch:
 
@@ -8,12 +8,11 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe matrix
+      - name: Host and path variants
         env:
           CF_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
         run: |
           set -uo pipefail
-          echo "token_len=${#CF_TOKEN}"
           meta='{"releaseType":"alpha","gameVersions":["1.20.1","Forge"],"displayName":"probe"}'
           printf '%s' "$meta" > meta.json
           echo 'x' > dummy.jar
@@ -21,45 +20,26 @@ jobs:
           probe() {
             local label="$1"; shift
             local code
-            code=$(curl -sS -o body.txt -w '%{http_code}' "$@" || echo "curlfail")
+            code=$(curl -sS -o body.txt -w '%{http_code}' "$@" || echo curlfail)
             echo "=== ${label} -> HTTP ${code}"
-            head -c 300 body.txt | tr -d '\r'
+            head -c 200 body.txt | tr -d '\r' | tr '\n' ' '
             echo
           }
 
-          probe "read_api_versions" \
-            -H "X-Api-Token: ${CF_TOKEN}" \
-            "https://minecraft.curseforge.com/api/game/versions"
+          H=(-H "X-Api-Token: ${CF_TOKEN}")
+          M=(-F "metadata=@meta.json;type=application/json")
+          F=(-F "file=@dummy.jar;type=application/java-archive")
 
-          probe "write_metaonly_realproject_realtoken" \
-            -H "X-Api-Token: ${CF_TOKEN}" \
-            -F "metadata=@meta.json;type=application/json" \
-            "https://minecraft.curseforge.com/api/projects/1750387/upload"
-
-          probe "write_metaonly_bogusproject_realtoken" \
-            -H "X-Api-Token: ${CF_TOKEN}" \
-            -F "metadata=@meta.json;type=application/json" \
-            "https://minecraft.curseforge.com/api/projects/999999999/upload"
-
-          probe "write_metaonly_realproject_bogustoken" \
-            -H "X-Api-Token: deadbeefdeadbeefdeadbeefdeadbeef1234" \
-            -F "metadata=@meta.json;type=application/json" \
-            "https://minecraft.curseforge.com/api/projects/1750387/upload"
-
-          probe "write_notoken_realproject" \
-            -F "metadata=@meta.json;type=application/json" \
-            "https://minecraft.curseforge.com/api/projects/1750387/upload"
-
-          probe "write_with_file" \
-            -H "X-Api-Token: ${CF_TOKEN}" \
-            -F "metadata=@meta.json;type=application/json" \
-            -F "file=@dummy.jar;type=application/java-archive" \
-            "https://minecraft.curseforge.com/api/projects/1750387/upload"
-
-          probe "v1_api_mods_1750387" \
-            -H "x-api-key: ${CF_TOKEN}" \
-            "https://api.curseforge.com/v1/mods/1750387"
-
-          probe "v1_api_games" \
-            -H "x-api-key: ${CF_TOKEN}" \
-            "https://api.curseforge.com/v1/games"
+          probe "A_minecraft_host_upload_GET" \
+            "${H[@]}" "https://minecraft.curseforge.com/api/projects/1750387/upload"
+          probe "B_minecraft_host_project_GET" \
+            "${H[@]}" "https://minecraft.curseforge.com/api/projects/1750387"
+          probe "C_www_host_upload_POST" \
+            "${H[@]}" "${M[@]}" "${F[@]}" "https://www.curseforge.com/api/projects/1750387/upload"
+          probe "D_api_host_upload_file_POST" \
+            "${H[@]}" "${M[@]}" "${F[@]}" "https://api.curseforge.com/v1/projects/1750387/upload-file"
+          probe "E_api_host_mods_1750387_files_GET" \
+            -H "x-api-key: ${CF_TOKEN}" "https://api.curseforge.com/v1/mods/1750387/files"
+          probe "F_minecraft_host_upload_alt_token_param" \
+            -H "X-Api-Token: ${CF_TOKEN}" "${M[@]}" "${F[@]}" \
+            "https://minecraft.curseforge.com/api/projects/1750387/upload?token=${CF_TOKEN}"
