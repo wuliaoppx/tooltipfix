@@ -53,6 +53,14 @@ public final class JadeBoxSprites {
     /** 诊断用：HEAD 注入到底有没有跑到（目标方法签名对不上时这里不会打印）。 */
     private static boolean hookLogged;
 
+    public static void reset() {
+        cachedKey = null;
+        cachedBackground = null;
+        cachedFrame = null;
+        cachedAt = 0;
+        loggedKey = null;
+    }
+
     private JadeBoxSprites() {
     }
 
@@ -109,10 +117,15 @@ public final class JadeBoxSprites {
                     key, describe(cachedBackground), describe(cachedFrame));
         }
 
-        int spriteX = x - OVERHANG;
-        int spriteY = y - OVERHANG;
-        int spriteWidth = width + OVERHANG * 2;
-        int spriteHeight = height + OVERHANG * 2;
+        GuiSprite reference = cachedBackground != null ? cachedBackground : cachedFrame;
+        int[] insets = reference.transparentInsets();
+        int left = insets[0], top = insets[1], right = insets[2], bottom = insets[3];
+        if (Math.abs(left - right) > width) left = right = 0;
+        if (Math.abs(top - bottom) > height) top = bottom = 0;
+        int spriteX = x - left;
+        int spriteY = y - top;
+        int spriteWidth = width + left + right;
+        int spriteHeight = height + top + bottom;
 
         // 与 SlotSprites 同一个坑：取消原版绘制后，混合状态取决于调用点遗留（无颜色的 innerBlit
         // 既不 enableBlend 也不设因子），必须自己摆正并还原。

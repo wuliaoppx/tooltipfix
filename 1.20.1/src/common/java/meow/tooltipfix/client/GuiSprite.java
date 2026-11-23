@@ -11,6 +11,9 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.Util;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.server.packs.resources.ReloadableResourceManager;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.SimpleTexture;
@@ -44,6 +47,26 @@ public final class GuiSprite {
     private static final Map<ResourceLocation, SimpleTexture> OWN_TEXTURES = new HashMap<>();
     /** 诊断用：每个 sprite 只在第一次加载时打一行几何信息，方便核对材质包写法。 */
     private static final java.util.Set<String> LOGGED_LOAD = new java.util.HashSet<>();
+    private static ReloadableResourceManager registeredResources;
+    private int[] transparentInsets;
+
+    private static void registerReload(Minecraft mc) {
+        if (mc.getResourceManager() instanceof ReloadableResourceManager resources && resources != registeredResources) {
+            registeredResources = resources;
+            resources.registerReloadListener(new SpriteReloadListener());
+        }
+    }
+
+    /** A concrete SAM is remappable; an invokedynamic MC-interface lambda is not. */
+    private static final class SpriteReloadListener implements ResourceManagerReloadListener {
+        @Override
+        public void onResourceManagerReload(ResourceManager reloaded) {
+            invalidateCache();
+            ToastBox.reload();
+            try { JadeBoxSprites.reset(); } catch (LinkageError ignored) { /* Jade is optional. */ }
+            LOGGER.info("[tooltipfix] GUI sprite caches cleared after resource reload");
+        }
+    }
 
     /**
      * 需要 GL_LINEAR 过滤的 sprite 贴图（理由见 {@link #applyLinearFilter}）。
@@ -103,6 +126,7 @@ public final class GuiSprite {
         if (minecraft == null || minecraft.getResourceManager() == null) {
             return null;
         }
+        registerReload(minecraft);
         ResourceManager resources = minecraft.getResourceManager();
         ResourceLocation texture = textureOf(spriteId);
         if (resources.getResourceStack(texture).isEmpty()) {
@@ -308,6 +332,38 @@ public final class GuiSprite {
     private static String stringOr(JsonObject object, String key, String fallback) {
         JsonElement element = object.get(key);
         return element != null && element.isJsonPrimitive() ? element.getAsString() : fallback;
+    }
+
+    /** Logical margins that contain only fully transparent pixels. Used by Jade paint, not layout. */
+    public int[] transparentInsets() {
+        if (transparentInsets != null) return transparentInsets;
+        transparentInsets = new int[4];
+        if (!nineSlice || frames != 1) return transparentInsets;
+        var resource = Minecraft.getInstance().getResourceManager().getResource(texture);
+        if (resource.isEmpty()) return transparentInsets;
+        try (InputStream stream = resource.get().open(); NativeImage image = NativeImage.read(stream)) {
+            int iw = image.getWidth(), ih = image.getHeight();
+            int l = iw, t = ih, r = -1, b = -1;
+            for (int py = 0; py < ih; py++) {
+                for (int px = 0; px < iw; px++) {
+                    if ((image.getPixelRGBA(px, py) >>> 24) != 0) {
+                        l = Math.min(l, px); t = Math.min(t, py);
+                        r = Math.max(r, px); b = Math.max(b, py);
+                    }
+                }
+            }
+            if (r >= l && b >= t) {
+                transparentInsets = new int[]{Math.min(borderLeft, l * frameWidth / iw),
+                        Math.min(borderTop, t * frameHeight / ih),
+                        Math.min(borderRight, (iw - 1 - r) * frameWidth / iw),
+                        Math.min(borderBottom, (ih - 1 - b) * frameHeight / ih)};
+                LOGGER.info("[tooltipfix] Jade texture {} transparent insets {}", texture,
+                        java.util.Arrays.toString(transparentInsets));
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[tooltipfix] Could not measure Jade texture {}", texture, e);
+        }
+        return transparentInsets;
     }
 
     public String packId() {

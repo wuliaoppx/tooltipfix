@@ -27,6 +27,7 @@ public final class TooltipSelftest {
     }
 
     public static void tick(Minecraft mc) {
+        PackReloadSelftest.tick(mc);
         JadeSelftest.tick(mc);
         if (!Boolean.getBoolean("tooltipfix.selftest.tooltip")) {
             return;

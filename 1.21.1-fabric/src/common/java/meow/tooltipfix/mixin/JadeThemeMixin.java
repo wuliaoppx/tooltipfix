@@ -1,31 +1,26 @@
 package meow.tooltipfix.mixin;
 
 import meow.tooltipfix.client.JadeBoxSprites;
+import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import snownee.jade.api.theme.Theme;
+import org.spongepowered.asm.mixin.injection.Redirect;
+import snownee.jade.api.JadeIds;
+import snownee.jade.api.ui.BoxStyle;
+import snownee.jade.impl.ui.BoxElement;
+import snownee.jade.impl.ui.StyledElement;
 
-/**
- * Hooks the one place that hands out Jade's active {@code Theme} (1.21.1: Jade 15.10.x).
- *
- * <p>{@link JadeBoxSprites} needs the theme object itself, because the fix is to replace its
- * {@code tooltipStyle} with the sprite based one - Jade then renders the box with the same code
- * 1.21.11 uses. {@code IThemeHelper.get().theme()} is what every renderer asks for a theme, and
- * because it is Jade's own method (not a vanilla override) its name survives the
- * named -> intermediary remap of the Fabric jar, so {@code method = "theme"} needs no
- * {@code LoaderNames} entry and no descriptor on either loader.
- *
- * <p>{@link Pseudo} plus {@code require = 0}: without Jade the mixin is skipped, and if a future
- * Jade renames the method nothing is injected and the box simply keeps its colour style.
- */
+/** Swap just the root box's background draw, not the style used by Jade's layout and progress bar. */
 @Pseudo
-@Mixin(targets = "snownee.jade.impl.theme.ThemeHelper", remap = false)
+@Mixin(targets = "snownee.jade.impl.ui.BoxElement", remap = false)
 public abstract class JadeThemeMixin {
-    @Inject(method = "theme", remap = false, at = @At("RETURN"), require = 0)
-    private void tooltipfix$useSpriteTooltipBox(CallbackInfoReturnable<Theme> cir) {
-        JadeBoxSprites.apply(cir.getReturnValue());
+    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lsnownee/jade/api/ui/BoxStyle;render"), require = 0)
+    private void tooltipfix$drawRootBackground(BoxStyle style, GuiGraphics graphics,
+            StyledElement element, float x, float y, float w, float h, float alpha) {
+        if (!((Object) this instanceof BoxElement box) || !JadeIds.ROOT.equals(box.getTag())
+                || !JadeBoxSprites.draw(style, graphics, x, y, w, h, alpha)) {
+            style.render(graphics, element, x, y, w, h, alpha);
+        }
     }
 }

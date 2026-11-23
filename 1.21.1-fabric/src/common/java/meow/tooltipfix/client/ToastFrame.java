@@ -25,7 +25,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.HashMap;
+import java.util.WeakHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -46,11 +46,7 @@ import java.util.Optional;
  */
 public final class ToastFrame {
     private static final Logger LOG = LoggerFactory.getLogger("tooltipfix-toast");
-    private static final Map<String, Slice> CACHE = new HashMap<>();
-    private static final Map<String, TextureAtlasSprite> SPRITES = new HashMap<>();
-    private static final Map<String, Integer> MISS_AT = new HashMap<>();
-    private static int frames;
-    private static final ResourceLocation GUI_ATLAS = ResourceLocation.withDefaultNamespace("textures/atlas/gui.png");
+    private static final Map<TextureAtlasSprite, Slice> CACHE = new WeakHashMap<>();
     private static final File MODE_FILE = new File(new File(Minecraft.getInstance().gameDirectory, "config"),
             "tooltipfix-toast.txt");
 
@@ -81,7 +77,6 @@ public final class ToastFrame {
     /** Drops parsed metadata so a resource reload picks up a changed pack. */
     public static void reset() {
         CACHE.clear();
-        SPRITES.clear();
         mode = readMode();
         modeStamp = stamp();
     }
@@ -111,18 +106,14 @@ public final class ToastFrame {
             t = Math.min(bv, h / 2);
             b = Math.min(bb, h / 2);
         } else {
-            // native sizes; shrink only when the toast cannot hold both sides
-            float k = 1.0F;
-            if (bu + br > w && bu + br > 0) {
-                k = Math.min(k, (float) w / (float) (bu + br));
-            }
-            if (bv + bb > h && bv + bb > 0) {
-                k = Math.min(k, (float) h / (float) (bv + bb));
-            }
-            l = Math.round(bu * k);
-            r = Math.round(br * k);
-            t = Math.round(bv * k);
-            b = Math.round(bb * k);
+            // Fit each axis independently. Preserve the larger decorated band (the top band
+            // contains CozyUI's entire exclamation mark, including the final pixel row).
+            l = Math.min(bu, Math.max(0, w));
+            r = Math.min(br, Math.max(0, w));
+            t = Math.min(bv, Math.max(0, h));
+            b = Math.min(bb, Math.max(0, h));
+            if (l + r > w) { if (l >= r) r = Math.max(0, w - l); else l = Math.max(0, w - r); }
+            if (t + b > h) { if (t >= b) b = Math.max(0, h - t); else t = Math.max(0, h - b); }
         }
 
         int midW = w - l - r;
@@ -138,20 +129,26 @@ public final class ToastFrame {
 
         int sw = s.baseW();
         int sh = s.baseH();
+        // Fixed bands stay 1:1. If an opposite band must be reduced, trim its inner
+        // padding instead of rescaling its outer outline (or the embedded glyph).
+        int sl = "clamp".equals(m) ? bu : Math.min(bu, l);
+        int sr = "clamp".equals(m) ? br : Math.min(br, r);
+        int st = "clamp".equals(m) ? bv : Math.min(bv, t);
+        int sb = "clamp".equals(m) ? bb : Math.min(bb, b);
         // corners
-        part(g, tas, sw, sh, 0, 0, bu, bv, x, y, l, t);
-        part(g, tas, sw, sh, sw - br, 0, br, bv, x + w - r, y, r, t);
-        part(g, tas, sw, sh, 0, sh - bb, bu, bb, x, y + h - b, l, b);
-        part(g, tas, sw, sh, sw - br, sh - bb, br, bb, x + w - r, y + h - b, r, b);
+        part(g, tas, sw, sh, 0, 0, sl, st, x, y, l, t);
+        part(g, tas, sw, sh, sw - sr, 0, sr, st, x + w - r, y, r, t);
+        part(g, tas, sw, sh, 0, sh - sb, sl, sb, x, y + h - b, l, b);
+        part(g, tas, sw, sh, sw - sr, sh - sb, sr, sb, x + w - r, y + h - b, r, b);
 
         // edges
         if (midW > 0 && srcMidW > 0) {
-            part(g, tas, sw, sh, bu, 0, srcMidW, bv, x + l, y, midW, t);
-            part(g, tas, sw, sh, bu, sh - bb, srcMidW, bb, x + l, y + h - b, midW, b);
+            part(g, tas, sw, sh, bu, 0, srcMidW, st, x + l, y, midW, t);
+            part(g, tas, sw, sh, bu, sh - sb, srcMidW, sb, x + l, y + h - b, midW, b);
         }
         if (midH > 0 && srcMidH > 0) {
-            part(g, tas, sw, sh, 0, bv, bu, srcMidH, x, y + t, l, midH);
-            part(g, tas, sw, sh, sw - br, bv, br, srcMidH, x + w - r, y + t, r, midH);
+            part(g, tas, sw, sh, 0, bv, sl, srcMidH, x, y + t, l, midH);
+            part(g, tas, sw, sh, sw - sr, bv, sr, srcMidH, x + w - r, y + t, r, midH);
         }
         if (midW > 0 && midH > 0 && srcMidW > 0 && srcMidH > 0) {
             part(g, tas, sw, sh, bu, bv, srcMidW, srcMidH, x + l, y + t, midW, midH);
@@ -187,18 +184,8 @@ public final class ToastFrame {
     }
 
     private static TextureAtlasSprite atlasSprite(ResourceLocation id) {
-        String key = id.toString();
-        if (SPRITES.containsKey(key)) {
-            return SPRITES.get(key);
-        }
-        TextureAtlasSprite tas;
-        try {
-            tas = Minecraft.getInstance().getGuiSprites().getSprite(id);
-        } catch (Exception e) {
-            tas = null;
-        }
-        SPRITES.put(key, tas);
-        return tas;
+        TextureAtlasSprite sprite = Minecraft.getInstance().getGuiSprites().getSprite(id);
+        return sprite != null && id.equals(sprite.contents().name()) ? sprite : null;
     }
 
     private static String readMode() {
@@ -221,36 +208,22 @@ public final class ToastFrame {
     }
 
     private static Slice slice(ResourceLocation sprite) {
-        String key = sprite.toString();
-        if (CACHE.containsKey(key)) {
-            return CACHE.get(key);
-        }
-        // A miss is retried instead of being cached forever: the first toast of a session can be
-        // drawn while the resource manager still holds the pre-reload state, and a permanently
-        // cached miss would leave that session on the vanilla tiling path.
-        Integer missAt = MISS_AT.get(key);
-        frames++;
-        if (missAt != null && frames - missAt < 100) {
-            return null;
-        }
-        Slice s = load(sprite);
-        if (s == null) {
-            MISS_AT.put(key, frames);
-            return null;
-        }
-        MISS_AT.remove(key);
-        CACHE.put(key, s);
-        return s;
+        TextureAtlasSprite current = atlasSprite(sprite);
+        if (current == null) return null;
+        if (!CACHE.containsKey(current)) CACHE.put(current, load(sprite));
+        return CACHE.get(current);
     }
 
     private static Slice load(ResourceLocation sprite) {
         ResourceLocation meta = ResourceLocation.fromNamespaceAndPath(sprite.getNamespace(),
                 "textures/gui/sprites/" + sprite.getPath() + ".png.mcmeta");
-        Optional<Resource> found = Minecraft.getInstance().getResourceManager().getResource(meta);
-        if (found.isEmpty()) {
-            LOG.info("no mcmeta at {}", meta);
-            return null;
-        }
+        ResourceLocation png = ResourceLocation.fromNamespaceAndPath(meta.getNamespace(),
+                meta.getPath().substring(0, meta.getPath().length() - ".mcmeta".length()));
+        var resources = Minecraft.getInstance().getResourceManager();
+        Optional<Resource> image = resources.getResource(png);
+        Optional<Resource> found = resources.getResource(meta);
+        if (image.isEmpty() || found.isEmpty() || !image.get().sourcePackId().equals(found.get().sourcePackId())
+                || "vanilla".equals(image.get().sourcePackId())) return null;
         LOG.info("mcmeta found at {} pack={}", meta, found.get().sourcePackId());
         try (Reader rd = new InputStreamReader(found.get().open(), StandardCharsets.UTF_8)) {
             JsonObject root = JsonParser.parseReader(rd).getAsJsonObject();

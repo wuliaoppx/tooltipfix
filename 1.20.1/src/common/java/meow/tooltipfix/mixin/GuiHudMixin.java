@@ -35,6 +35,7 @@ public abstract class GuiHudMixin {
                                     int x, int y, int u, int v, int width, int height) {
         meow.tooltipfix.client.TooltipMode.tick();
         ToastSelftest.tick();
+        meow.tooltipfix.client.PackReloadSelftest.tick(net.minecraft.client.Minecraft.getInstance());
         meow.tooltipfix.client.JadeSelftest.tick();
         if (!HudSprites.drawOriginalBlit(graphics, texture, x, y, u, v, width, height)) {
             graphics.blit(texture, x, y, u, v, width, height);

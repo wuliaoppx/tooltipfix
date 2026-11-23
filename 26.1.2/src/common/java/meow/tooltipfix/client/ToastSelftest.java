@@ -6,18 +6,20 @@ import net.minecraft.client.gui.components.toasts.ToastManager;
 import net.minecraft.network.chat.Component;
 
 /**
- * {@code -Dtooltipfix.selftest=true}: keep re-adding the "chat messages can't be verified" toast
- * so the frame can be captured without joining an unverified server.
+ * 自检：循环发两个 system toast，方便截图对比框体。
+ *
+ * <p>打开方式两种：{@code -Dtooltipfix.selftest=true}，或者
+ * {@code config/tooltipfix-toast.txt} 里写上 {@code selftest}（省得改启动参数）。
  */
 public final class ToastSelftest {
-    private static final boolean ENABLED = Boolean.getBoolean("tooltipfix.selftest");
     private static int counter;
 
     private ToastSelftest() {
     }
 
     public static void tick(ToastManager manager) {
-        if (!ENABLED || ++counter % 160 != 0) {
+        PackReloadSelftest.tick(Minecraft.getInstance());
+        if (!ToastFrame.selftest() || ++counter % 160 != 0) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();

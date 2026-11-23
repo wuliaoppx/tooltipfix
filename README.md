@@ -9,11 +9,13 @@
 | 目录 | Minecraft | 加载器 | 版本 | 产物 |
 | --- | --- | --- | --- | --- |
 | [`1.12.2`](1.12.2) | 1.12.2 | Forge 14.23.5.2864 | 1.0.0 | `tooltipfix-forge-1.12.2-1.0.0.jar` |
-| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.30 | `tooltipfix-forge-1.20.1-1.0.30.jar` + `tooltipfix-fabric-1.20.1-1.0.30.jar` |
-| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.7 | `tooltipfix-fabric-1.21.1-1.0.7.jar` |
-| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.9 | `tooltipfix-neoforge-1.21.1-1.0.9.jar` |
+| [`1.20.1`](1.20.1) | 1.20.1 | Forge 47.x / Fabric | 1.0.31 | `tooltipfix-forge-1.20.1-1.0.31.jar` + `tooltipfix-fabric-1.20.1-1.0.31.jar` |
+| [`1.21.1-fabric`](1.21.1-fabric) | 1.21.1 | Fabric | 1.0.8 | `tooltipfix-fabric-1.21.1-1.0.8.jar` |
+| [`1.21.1-neoforge`](1.21.1-neoforge) | 1.21.1 | NeoForge 21.1.x | 1.0.10 | `tooltipfix-neoforge-1.21.1-1.0.10.jar` |
 | [`1.21.11`](1.21.11) | 1.21.11 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-1.21.11-1.0.0.jar` |
-| [`26.1.2`](26.1.2) | 26.1.2 | Fabric / NeoForge | 1.0.0 | `tooltipfix-{fabric,neoforge}-26.1.2-1.0.0.jar` |
+| [`26.1.2`](26.1.2) | 26.1.2 | Fabric / NeoForge | 1.0.1 | `tooltipfix-{fabric,neoforge}-26.1.2-1.0.1.jar` |
+
+> 最新发布为 **v1.2.0**，改动说明见 [`docs/CHANGELOG-1.2.0.md`](docs/CHANGELOG-1.2.0.md)。
 
 > 发布产物统一按 **`tooltipfix-<加载器>-<游戏版本>-<模组版本>.jar`** 命名。
 > 1.21.11 与 26.1.2 两个变体**只修系统提示框（toast）**，不含物品悬浮框替换；

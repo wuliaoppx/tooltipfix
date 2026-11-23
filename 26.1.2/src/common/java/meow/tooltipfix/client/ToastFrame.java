@@ -1,267 +1,242 @@
 package meow.tooltipfix.client;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
 import meow.tooltipfix.mixin.GuiGraphicsExtractorAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.resources.Identifier;
+import net.minecraft.client.resources.metadata.gui.GuiMetadataSection;
+import net.minecraft.client.resources.metadata.gui.GuiSpriteScaling;
 import net.minecraft.server.packs.resources.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.HashMap;
+import java.util.WeakHashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
-/**
- * Draws a toast background the way the pack asked for it (26.1.2 / 1.21.4+ pipeline).
- *
- * <p>1.21.4 and later do read {@code gui.scaling} nine_slice metadata, but
- * {@code GuiGraphicsExtractor.blitNineSlicedSprite} clips every border to half the target size
- * ({@code Math.min(border, height / 2)}). A 160x64 sprite with {@code border.top = 26..30} is
- * therefore squashed into a 32 or 44 pixel tall toast, which is what deforms the pack's icon and
- * corners.
- *
- * <p>Here the borders keep the sizes the pack declared and are shrunk only when the toast really
- * cannot hold both sides, so the frame keeps its proportions at every toast height.
- */
+/** System toast nine-slice correction for pack-provided sprites only. */
 public final class ToastFrame {
     private static final Logger LOG = LoggerFactory.getLogger("tooltipfix-toast");
-    private static final Map<String, Slice> CACHE = new HashMap<>();
-    private static final Map<String, TextureAtlasSprite> SPRITES = new HashMap<>();
+    private static final Map<TextureAtlasSprite, Slice> CACHE = new WeakHashMap<>();
+    private static final Set<String> LOGGED = new HashSet<>();
 
-    private static String mode;
-    private static long modeStamp = Long.MIN_VALUE;
-    private static File modeFile;
+    private static String config = "";
+    private static long configStamp = Long.MIN_VALUE;
+    private static File configFile;
     private static int tick;
 
     private ToastFrame() {
     }
 
-    /** {@code off} | {@code clamp} | {@code fix}. */
-    public static String mode() {
-        if (modeFile == null) {
-            modeFile = new File(new File(Minecraft.getInstance().gameDirectory, "config"), "tooltipfix-toast.txt");
-            mode = readMode();
-            modeStamp = stamp();
+    /** 配置文件全文（小写）。 */
+    private static String config() {
+        if (configFile == null) {
+            configFile = new File(new File(Minecraft.getInstance().gameDirectory, "config"), "tooltipfix-toast.txt");
+            config = readConfig();
+            configStamp = stamp();
         }
         if (++tick % 20 == 0) {
             long now = stamp();
-            if (now != modeStamp) {
-                modeStamp = now;
-                mode = readMode();
+            if (now != configStamp) {
+                configStamp = now;
+                config = readConfig();
             }
         }
-        return mode;
+        return config;
+    }
+
+    /** {@code off} | {@code clamp} | {@code fix}。 */
+    public static String mode() {
+        String c = config();
+        if (c.contains("off")) {
+            return "off";
+        }
+        if (c.contains("clamp")) {
+            return "clamp";
+        }
+        return "fix";
+    }
+
+    public static boolean selftest() {
+        return Boolean.getBoolean("tooltipfix.selftest") || config().contains("selftest");
     }
 
     public static void reset() {
         CACHE.clear();
-        SPRITES.clear();
-        modeFile = null;
-        mode = null;
-        modeStamp = Long.MIN_VALUE;
+        LOGGED.clear();
+        configFile = null;
+        config = "";
+        configStamp = Long.MIN_VALUE;
     }
 
-    /** Replaces vanilla's single {@code blitSprite} call for the toast background. */
+    /** 替换原版那一次 {@code blitSprite}。任何可疑情况都原样交回原版。 */
     public static void draw(GuiGraphicsExtractor g, RenderPipeline pipeline, Identifier sprite,
                             int x, int y, int w, int h) {
-        String m = mode();
-        Slice s = "off".equals(m) ? null : slice(sprite);
-        if (s == null || "clamp".equals(m)) {
+        String mode = mode();
+        TextureAtlasSprite tas = "off".equals(mode) ? null : atlasSprite(g, sprite);
+        Slice s = tas == null ? null : slice(sprite, tas);
+        if (s == null) {
             g.blitSprite(pipeline, sprite, x, y, w, h);
             return;
         }
 
-        TextureAtlasSprite tas = atlasSprite(g, sprite);
-        if (tas == null) {
-            g.blitSprite(pipeline, sprite, x, y, w, h);
-            return;
-        }
-        AbstractTexture tex = Minecraft.getInstance().getTextureManager().getTexture(tas.atlasLocation());
-        GpuTextureView view = tex == null ? null : tex.getTextureView();
-        GpuSampler sampler = tex == null ? null : tex.getSampler();
-        if (view == null || sampler == null) {
-            g.blitSprite(pipeline, sprite, x, y, w, h);
-            return;
-        }
+        int[] b = "clamp".equals(mode) ? clamp(s, w, h) : fit(s, w, h);
+        int l = b[0];
+        int r = b[1];
+        int t = b[2];
+        int bo = b[3];
 
-        int bu = Math.round(s.left());
-        int bv = Math.round(s.top());
-        int br = Math.round(s.right());
-        int bb = Math.round(s.bottom());
-
-        float k = 1.0F;
-        if (bu + br > w && bu + br > 0) {
-            k = Math.min(k, (float) w / (float) (bu + br));
-        }
-        if (bv + bb > h && bv + bb > 0) {
-            k = Math.min(k, (float) h / (float) (bv + bb));
-        }
-        int l = Math.round(bu * k);
-        int r = Math.round(br * k);
-        int t = Math.round(bv * k);
-        int b = Math.round(bb * k);
-
+        int[] vanilla = clamp(s, w, h);
+        boolean same = l == vanilla[0] && r == vanilla[1] && t == vanilla[2] && bo == vanilla[3];
         int midW = w - l - r;
-        int midH = h - t - b;
-        int srcMidW = s.baseW() - bu - br;
-        int srcMidH = s.baseH() - bv - bb;
-        int sw = s.baseW();
-        int sh = s.baseH();
+        int midH = h - t - bo;
+        boolean innerEmpty = midW <= 0 || midH <= 0 || s.width() - l - r <= 0 || s.height() - t - bo <= 0;
+        boolean tiles = !s.stretchInner() && !innerEmpty;
+        if (same || tiles) {
+            // 原版此刻不会夹边框（或需要平铺内区），交给原版最稳
+            g.blitSprite(pipeline, sprite, x, y, w, h);
+            logOnce(sprite, "vanilla(same=" + same + ",tile=" + tiles + ")");
+            return;
+        }
 
-        part(g, tas, view, sampler, sw, sh, 0, 0, bu, bv, x, y, l, t);
-        part(g, tas, view, sampler, sw, sh, sw - br, 0, br, bv, x + w - r, y, r, t);
-        part(g, tas, view, sampler, sw, sh, 0, sh - bb, bu, bb, x, y + h - b, l, b);
-        part(g, tas, view, sampler, sw, sh, sw - br, sh - bb, br, bb, x + w - r, y + h - b, r, b);
+        int sw = s.width();
+        int sh = s.height();
+        int u0 = s.left();
+        int v0 = s.top();
+        int uw = sw - s.left() - s.right();
+        int vh = sh - s.top() - s.bottom();
 
-        if (midW > 0 && srcMidW > 0) {
-            part(g, tas, view, sampler, sw, sh, bu, 0, srcMidW, bv, x + l, y, midW, t);
-            part(g, tas, view, sampler, sw, sh, bu, sh - bb, srcMidW, bb, x + l, y + h - b, midW, b);
-        }
-        if (midH > 0 && srcMidH > 0) {
-            part(g, tas, view, sampler, sw, sh, 0, bv, bu, srcMidH, x, y + t, l, midH);
-            part(g, tas, view, sampler, sw, sh, sw - br, bv, br, srcMidH, x + w - r, y + t, r, midH);
-        }
-        if (midW > 0 && midH > 0 && srcMidW > 0 && srcMidH > 0) {
-            part(g, tas, view, sampler, sw, sh, bu, bv, srcMidW, srcMidH, x + l, y + t, midW, midH);
-        }
+        int sl = "clamp".equals(mode) ? s.left() : Math.min(s.left(), l);
+        int sr = "clamp".equals(mode) ? s.right() : Math.min(s.right(), r);
+        int st = "clamp".equals(mode) ? s.top() : Math.min(s.top(), t);
+        int sb = "clamp".equals(mode) ? s.bottom() : Math.min(s.bottom(), bo);
+        // Fixed bands are copied 1:1; excess inner padding is cropped, not rescaled.
+        part(g, pipeline, tas, sw, sh, 0, 0, sl, st, x, y, l, t);
+        part(g, pipeline, tas, sw, sh, sw - sr, 0, sr, st, x + w - r, y, r, t);
+        part(g, pipeline, tas, sw, sh, 0, sh - sb, sl, sb, x, y + h - bo, l, bo);
+        part(g, pipeline, tas, sw, sh, sw - sr, sh - sb, sr, sb, x + w - r, y + h - bo, r, bo);
+        // 四边
+        part(g, pipeline, tas, sw, sh, u0, 0, uw, st, x + l, y, midW, t);
+        part(g, pipeline, tas, sw, sh, u0, sh - sb, uw, sb, x + l, y + h - bo, midW, bo);
+        part(g, pipeline, tas, sw, sh, 0, v0, sl, vh, x, y + t, l, midH);
+        part(g, pipeline, tas, sw, sh, sw - sr, v0, sr, vh, x + w - r, y + t, r, midH);
+        // 内区
+        part(g, pipeline, tas, sw, sh, u0, v0, uw, vh, x + l, y + t, midW, midH);
+        logOnce(sprite, "fixed b=" + l + "," + t + "," + r + "," + bo + " target=" + w + "x" + h);
     }
 
-    private static void part(GuiGraphicsExtractor g, TextureAtlasSprite tas, GpuTextureView view,
-                             GpuSampler sampler, int sw, int sh, int su, int sv, int suw, int svh,
-                             int x, int y, int w, int h) {
+    /** 一块九宫格：源矩形按 srcW/srcH 归一化，走与 vanilla 相同的 innerBlit。 */
+    private static void part(GuiGraphicsExtractor g, RenderPipeline pipeline, TextureAtlasSprite tas, int srcW, int srcH,
+                             int su, int sv, int suw, int svh, int x, int y, int w, int h) {
         if (w <= 0 || h <= 0 || suw <= 0 || svh <= 0) {
             return;
         }
-        float u0 = tas.getU((float) su / (float) sw);
-        float u1 = tas.getU((float) (su + suw) / (float) sw);
-        float v0 = tas.getV((float) sv / (float) sh);
-        float v1 = tas.getV((float) (sv + svh) / (float) sh);
-        g.blit(view, sampler, x, y, x + w, y + h, u0, u1, v0, v1);
+        float u0 = tas.getU((float) su / (float) srcW);
+        float u1 = tas.getU((float) (su + suw) / (float) srcW);
+        float v0 = tas.getV((float) sv / (float) srcH);
+        float v1 = tas.getV((float) (sv + svh) / (float) srcH);
+        // 参数顺序是 (texture, x0, x1, y0, y1, u0, u1, v0, v1)
+        ((GuiGraphicsExtractorAccess) (Object) g).tooltipfix$innerBlit(pipeline, tas.atlasLocation(),
+                x, x + w, y, y + h, u0, u1, v0, v1, -1);
+    }
+
+    /** 原版行为：每边最多夹到目标的一半。 */
+    private static int[] clamp(Slice s, int w, int h) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+        return new int[]{
+                Math.min(s.left(), halfW), Math.min(s.right(), halfW),
+                Math.min(s.top(), halfH), Math.min(s.bottom(), halfH)
+        };
+    }
+
+    /** Keep the larger (potentially decorated) band intact; fit the smaller opposite band. */
+    private static int[] fit(Slice s, int w, int h) {
+        int[] horizontal = fitAxis(s.left(), s.right(), w);
+        int[] vertical = fitAxis(s.top(), s.bottom(), h);
+        return new int[]{horizontal[0], horizontal[1], vertical[0], vertical[1]};
+    }
+
+    private static int[] fitAxis(int first, int second, int size) {
+        first = Math.min(first, Math.max(0, size));
+        second = Math.min(second, Math.max(0, size));
+        if (first + second > size) {
+            if (first >= second) second = Math.max(0, size - first);
+            else first = Math.max(0, size - second);
+        }
+        return new int[]{first, second};
     }
 
     private static TextureAtlasSprite atlasSprite(GuiGraphicsExtractor g, Identifier id) {
-        String key = id.toString();
-        if (SPRITES.containsKey(key)) {
-            return SPRITES.get(key);
-        }
-        TextureAtlasSprite tas;
         try {
             TextureAtlas atlas = ((GuiGraphicsExtractorAccess) (Object) g).tooltipfix$guiSprites();
-            tas = atlas == null ? null : atlas.getSprite(id);
+            TextureAtlasSprite sprite = atlas == null ? null : atlas.getSprite(id);
+            return sprite != null && id.equals(sprite.contents().name()) ? sprite : null;
         } catch (Exception e) {
-            LOG.warn("sprite lookup failed for {}: {}", id, e.toString());
-            tas = null;
+            LOG.warn("sprite lookup failed for {}: {}", id, e);
+            return null;
         }
-        SPRITES.put(key, tas);
-        return tas;
     }
 
-    private static String readMode() {
+    private static String readConfig() {
         try {
-            File f = modeFile;
+            File f = configFile;
             if (f == null || !f.isFile()) {
-                return "fix";
+                return "";
             }
-            String v = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim();
-            if (v.equalsIgnoreCase("off") || v.equalsIgnoreCase("clamp")) {
-                return v.toLowerCase();
-            }
-            return "fix";
+            return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).toLowerCase();
         } catch (Exception e) {
-            return "fix";
+            return "";
         }
     }
 
     private static long stamp() {
-        File f = modeFile;
+        File f = configFile;
         return f != null && f.isFile() ? f.lastModified() * 31 + f.length() : -1L;
     }
 
-    private static Slice slice(Identifier sprite) {
-        String key = sprite.toString();
-        if (CACHE.containsKey(key)) {
-            return CACHE.get(key);
+    private static Slice slice(Identifier id, TextureAtlasSprite sprite) {
+        if (!CACHE.containsKey(sprite)) {
+            LOGGED.clear();
+            CACHE.put(sprite, load(id, sprite));
         }
-        Slice s = load(sprite);
-        CACHE.put(key, s);
-        return s;
+        return CACHE.get(sprite);
     }
 
-    private static Slice load(Identifier sprite) {
-        Identifier meta = Identifier.fromNamespaceAndPath(sprite.getNamespace(),
-                "textures/gui/sprites/" + sprite.getPath() + ".png.mcmeta");
-        Optional<Resource> found = Minecraft.getInstance().getResourceManager().getResource(meta);
-        if (found.isEmpty()) {
+    private static Slice load(Identifier id, TextureAtlasSprite sprite) {
+        Identifier png = Identifier.fromNamespaceAndPath(id.getNamespace(),
+                "textures/gui/sprites/" + id.getPath() + ".png");
+        Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(png);
+        if (resource.isEmpty()) return null;
+        String pack = resource.get().sourcePackId();
+        if ("vanilla".equals(pack) || "minecraft".equals(pack)) {
+            logOnce(id, "skip(builtin pack=" + pack + ")");
             return null;
         }
-        try (Reader rd = new InputStreamReader(found.get().open(), StandardCharsets.UTF_8)) {
-            JsonObject root = JsonParser.parseReader(rd).getAsJsonObject();
-            JsonObject gui = asObject(root, "gui");
-            JsonObject scaling = gui == null ? null : asObject(gui, "scaling");
-            if (scaling == null || !"nine_slice".equals(asString(scaling, "type"))) {
-                return null;
-            }
-            int baseW = asInt(scaling, "width", 0);
-            int baseH = asInt(scaling, "height", 0);
-            if (baseW <= 0 || baseH <= 0) {
-                return null;
-            }
-            float l = 0.0F;
-            float t = 0.0F;
-            float r = 0.0F;
-            float b = 0.0F;
-            JsonElement border = scaling.get("border");
-            if (border != null && border.isJsonObject()) {
-                JsonObject o = border.getAsJsonObject();
-                l = asInt(o, "left", 0);
-                t = asInt(o, "top", 0);
-                r = asInt(o, "right", 0);
-                b = asInt(o, "bottom", 0);
-            } else if (border != null && border.isJsonPrimitive()) {
-                float v = border.getAsFloat();
-                l = v;
-                t = v;
-                r = v;
-                b = v;
-            }
-            LOG.info("slice {} base={}x{} border={},{},{},{}", sprite, baseW, baseH, l, t, r, b);
-            return new Slice(baseW, baseH, l, t, r, b);
-        } catch (Exception e) {
-            LOG.warn("mcmeta parse failed for {}: {}", sprite, e.toString());
-            return null;
+        var scaling = sprite.contents().getAdditionalMetadata(GuiMetadataSection.TYPE)
+                .orElse(GuiMetadataSection.DEFAULT).scaling();
+        if (!(scaling instanceof GuiSpriteScaling.NineSlice nine)) return null;
+        var b = nine.border();
+        LOG.info("slice {} pack={} base={}x{} border={},{},{},{} stretchInner={}", id, pack,
+                nine.width(), nine.height(), b.left(), b.top(), b.right(), b.bottom(), nine.stretchInner());
+        return new Slice(nine.width(), nine.height(), b.left(), b.top(), b.right(), b.bottom(), nine.stretchInner());
+    }
+
+    private static void logOnce(Identifier sprite, String what) {
+        String key = sprite + "|" + what;
+        if (LOGGED.add(key)) {
+            LOG.info("toast frame {} -> {}", sprite, what);
         }
     }
 
-    private static JsonObject asObject(JsonObject o, String key) {
-        JsonElement e = o.get(key);
-        return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;
-    }
-
-    private static String asString(JsonObject o, String key) {
-        JsonElement e = o.get(key);
-        return e != null && e.isJsonPrimitive() ? e.getAsString() : null;
-    }
-
-    private static int asInt(JsonObject o, String key, int fallback) {
-        JsonElement e = o.get(key);
-        return e != null && e.isJsonPrimitive() ? e.getAsInt() : fallback;
-    }
-
-    private record Slice(int baseW, int baseH, float left, float top, float right, float bottom) {
+    private record Slice(int width, int height, int left, int top, int right, int bottom, boolean stretchInner) {
     }
 }
